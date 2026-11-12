@@ -1,0 +1,12 @@
+{
+  "approved_map_id": "143e33ad-d6c5-11f1-aad3-b8aeed7197f8",
+  "navigation_timeout_seconds": 120,
+  "waypoints": [
+    {
+      "x": 31.873,
+      "y": 20.157,
+      "orientation_deg": -91.9,
+      "oven": false
+    }
+  ]
+}

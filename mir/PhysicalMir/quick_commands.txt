@@ -1,0 +1,49 @@
+MiR100 (GlassLab1) — quick terminal commands
+===========================================
+
+ROBOT NETWORK
+  Connect laptop to mir52 Wi-Fi.
+  MiR IP: 192.168.12.20
+  Laptop IP (last observed): 192.168.12.131 — may change after reconnecting.
+
+ON OMARCHY (outside Docker)
+  docker exec -it vt3-ros1-gui bash                 # Open existing ROS container
+  ip -4 addr show wlp0s20f3                       # Check laptop's current Wi-Fi IP
+  docker cp /home/hlf/workspace/vt3/physicalMir/. vt3-ros1-gui:/root/catkin_ws/physical_mir/physical_mir_ros_scripts/  # Copy edited code into Docker
+
+INSIDE DOCKER — CONNECT ROS CLI TO PHYSICAL MiR
+  export ROS_MASTER_URI=http://192.168.12.20:11311
+  export ROS_IP=192.168.12.131                     # Replace if laptop IP changes
+  unset ROS_HOSTNAME
+  # These exports are needed for rostopic/rosnode commands in each fresh shell.
+  # ros_config.py configures the Python scripts independently.
+
+READ-ONLY ROS COMMANDS
+  rostopic echo -n 1 /robot_pose                   # Robot's current map pose (XYZ + quaternion)
+  rostopic echo -n 1 /localization_score           # Localization score (not proof of accuracy)
+  rostopic echo -n 1 /odom                         # Odometry and velocities
+  rostopic echo -n 1 /move_base/status             # Navigation goal statuses
+  rostopic info /move_base/goal                   # Navigation action connections
+  rostopic list                                   # Available ROS topics
+
+READ-ONLY MiR REST COMMANDS (no login needed for /status on this robot)
+  curl -s http://192.168.12.20/api/v2.0.0/status | python3 -m json.tool
+  curl -s http://192.168.12.20/api/v2.0.0/status | python3 -c 'import json,sys; s=json.load(sys.stdin); print("Map ID:", s["map_id"]); print("State:", s["state_text"]); print("Mode:", s["mode_text"])'
+
+CURRENT GLASSLAB1 MAP
+  Map ID (previously observed): 143e33ad-d6c5-11f1-aad3-b8aeed7197f8
+  Always confirm the active map ID before a mission.
+
+RUN MISSION DRY-RUN ONLY (INSIDE DOCKER)
+  cd /root/catkin_ws/physical_mir/physical_mir_ros_scripts
+  python3 mission_controller.py                    # No --execute or --confirm-safe
+
+LOCAL TESTS (INSIDE DOCKER; confirm tests use mocks and never execute live goals)
+  cd /root/catkin_ws/physical_mir/physical_mir_ros_scripts
+  python3 -m unittest discover -s tests -v
+
+IMPORTANT
+  - Do not run Gazebo, local roscore, or another move_base against the robot's master.
+  - Do not publish to /cmd_vel, /move_base/goal, or /move_base/cancel while diagnosing.
+  - Verify map alignment visually, route clearance, safety state and E-stop locally before any real movement.
+  - If ROS connections fail, check mir52 Wi-Fi, ROS_IP, and the MiR-specific UFW firewall rule.
