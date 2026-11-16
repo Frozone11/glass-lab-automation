@@ -1,0 +1,8 @@
+2026-11-12 10:43:17  web interface on http://127.0.0.1:8080  (Ctrl+C to quit)
+2026-11-12 10:43:26  manual: door open
+2026-11-12 10:43:26  oven: door open
+2026-11-12 10:43:31  ERROR: oven not reachable at 192.168.12.50: <urlopen error timed out>
+2026-11-12 10:43:31  STOP: stopping oven and UR5
+2026-11-12 10:43:36    oven stop failed: oven not reachable at 192.168.12.50: <urlopen error timed out>
+2026-11-12 10:43:41    UR5 stop failed: UR5 not reachable at 192.168.12.148:29999: timed out
+2026-11-12 10:43:42  web interface stopped

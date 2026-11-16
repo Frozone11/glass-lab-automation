@@ -1,0 +1,6 @@
+2026-11-02 13:59:33  web interface on http://127.0.0.1:8080  (Ctrl+C to quit)
+2026-11-02 14:01:34  manual: door open
+2026-11-02 14:01:34  oven: door open
+2026-11-02 14:02:04  ERROR: door did not report 'open' within 30s (last status: unknown)
+2026-11-02 14:02:04  STOP: stopping oven and UR5
+2026-11-02 14:04:01  web interface stopped

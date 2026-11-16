@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlassLab MVP2</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #dde3e8;
+  --panel: #f6f8f9;
+  --sunken: #e9edf0;
+  --ink: #17202a;
+  --muted: #5a6672;
+  --line: #b8c2cb;
+  --accent: #1f5fa8;
+  --accent-ink: #ffffff;
+  --ok: #2b7a3a;
+  --warn: #a86400;
+  --bad: #c0261f;
+  --stop: #c62a22;
+  --stop-ring: #f2c230;
+  --font: "Bahnschrift", "DIN Alternate", "DIN 2014", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #13171b;
+    --panel: #1c2228;
+    --sunken: #161b20;
+    --ink: #e2e7eb;
+    --muted: #8e99a4;
+    --line: #333d47;
+    --accent: #6ea2e6;
+    --accent-ink: #0d1824;
+    --ok: #5cbf6c;
+    --warn: #e5a33d;
+    --bad: #f05f55;
+    --stop: #d8372e;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 var(--font);
+  min-height: 100vh;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0; }
+[hidden] { display: none !important; }
+
+/* ---------- Instrument bar ---------- */
+.bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.brand { line-height: 1.15; }
+.brand b { display: block; font-size: 20px; font-weight: 700; letter-spacing: .01em; }
+.brand span { color: var(--muted); font-size: 13px; }
+.readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.readout {
+  padding: 6px 16px 7px;
+  min-width: 110px;
+  border-right: 1px solid var(--line);
+}
+.readout:last-child { border-right: 0; }
+.readout span { display: block; font-size: 12px; color: var(--muted); }
+.readout b {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 19px;
+  font-weight: 600;
+  font-stretch: condensed;
+  white-space: nowrap;
+}
+.readout b::before {
+  content: "";
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.readout[data-tone=ok] b::before { background: var(--ok); }
+.readout[data-tone=warn] b::before { background: var(--warn); }
+.readout[data-tone=bad] b::before { background: var(--bad); }
+.readout[data-tone=bad] b { color: var(--bad); }
+.readout small { display: block; font-size: 12px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.estop {
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  border: 5px solid var(--stop-ring);
+  background: radial-gradient(circle at 35% 30%, #e8554c, var(--stop) 60%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #7a1712;
+}
+.estop:active { transform: translateY(2px); box-shadow: 0 1px 0 #7a1712; }
+.estop small { display: block; font-size: 10px; font-weight: 400; letter-spacing: 0; opacity: .85; }
+
+/* ---------- Job strip ---------- */
+.job {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 10px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.job-text b { font-size: 17px; font-weight: 600; margin-right: 10px; }
+.job-text span { color: var(--muted); }
+.job[data-state=running] .job-text b { color: var(--accent); }
+.job[data-state=paused] .job-text b { color: var(--warn); }
+.job[data-state=error] .job-text b, .job[data-state=stopped] .job-text b { color: var(--bad); }
+.job[data-state=done] .job-text b { color: var(--ok); }
+.progress { grid-column: 1 / -1; height: 4px; background: var(--sunken); border-radius: 2px; overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+.job[data-state=paused] .progress div { background: var(--warn); }
+.job[data-state=error] .progress div, .job[data-state=stopped] .progress div { background: var(--bad); }
+.job[data-state=done] .progress div { background: var(--ok); }
+.offline-note { color: var(--bad); font-weight: 600; }
+
+/* ---------- Tabs ---------- */
+nav.tabs { display: flex; gap: 4px; padding: 12px 20px 0; }
+nav.tabs button {
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: none;
+  padding: 8px 16px;
+  border-radius: 6px 6px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+nav.tabs button[aria-selected=true] { background: var(--panel); border-color: var(--line); color: var(--ink); font-weight: 600; }
+main { padding: 0 20px 24px; }
+.tab { background: var(--panel); border: 1px solid var(--line); border-radius: 0 6px 6px 6px; padding: 16px; }
+
+.split { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
+.pane-head, .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; min-height: 36px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+
+/* ---------- Buttons and fields ---------- */
+button.btn, .tab button:not(.plain) {
+  padding: 7px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  cursor: pointer;
+}
+.tab button:not(.plain):hover:not(:disabled) { border-color: var(--accent); }
+.tab button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.tab button.danger { color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input[type=text], input[type=number], select, textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--sunken);
+}
+input[type=number] { width: 80px; }
+
+/* ---------- Recipe lists ---------- */
+.list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.list li + li { border-top: 1px solid var(--line); }
+.list button {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 12px; border: 0; background: none; cursor: pointer; border-left: 3px solid transparent;
+}
+.list button:hover { background: var(--sunken); }
+.list button[aria-current] { background: var(--sunken); border-left-color: var(--accent); }
+.list b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.list small { color: var(--muted); }
+.list small.bad { color: var(--bad); }
+.empty { color: var(--muted); padding: 12px; }
+
+/* ---------- Run: step sequence ---------- */
+.sequence { margin: 0; padding: 0 0 0 0; list-style: none; counter-reset: s; max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 5px; }
+.sequence li {
+  counter-increment: s;
+  display: grid; grid-template-columns: 44px 1fr;
+  padding: 5px 10px 5px 0;
+  font-family: var(--mono); font-size: 13.5px;
+  border-bottom: 1px solid var(--sunken);
+}
+.sequence li::before { content: counter(s); text-align: right; padding-right: 12px; color: var(--muted); font-family: var(--font); font-variant-numeric: tabular-nums; }
+.sequence li.done { color: var(--muted); }
+.sequence li.current { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.sequence li.current::before { color: var(--accent); }
+.job-paused .sequence li.current { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.problems { color: var(--bad); margin: 0 0 10px; }
+
+/* ---------- Editor ---------- */
+.name-field { display: flex; align-items: center; gap: 8px; }
+.name-field input { width: 240px; font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button.plain { border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--muted); }
+.seg button.plain[aria-pressed=true] { background: var(--sunken); color: var(--ink); font-weight: 600; }
+.rows { list-style: none; margin: 0 0 10px; padding: 0; border: 1px solid var(--line); border-radius: 5px; }
+.rows:empty::after { content: "No steps yet. Add one below."; display: block; padding: 12px; color: var(--muted); }
+.row {
+  display: grid;
+  grid-template-columns: 34px 190px 1fr auto;
+  gap: 8px; align-items: center;
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--sunken);
+}
+.row:last-child { border-bottom: 0; }
+.row .idx { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row .args { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.row .args input[type=text] { flex: 1; min-width: 160px; }
+.row[data-cmd=comment] .args input { font-style: italic; background: none; border-style: dashed; }
+.row[data-cmd=comment] select { color: var(--muted); }
+.row[data-cmd=raw] .args input { font-family: var(--mono); }
+.row .unit { color: var(--muted); }
+.row-tools { display: flex; gap: 2px; }
+.row-tools button.plain { border: 0; background: none; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; color: var(--muted); }
+.row-tools button.plain:hover { background: var(--sunken); color: var(--ink); }
+.row-error { grid-column: 2 / -1; margin: 0; color: var(--bad); font-size: 13px; }
+.row-error:empty { display: none; }
+.row.has-error { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+.palette { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.palette > span { color: var(--muted); margin-right: 4px; }
+textarea#ed-text { width: 100%; min-height: 380px; font-family: var(--mono); font-size: 13.5px; line-height: 1.6; resize: vertical; }
+.check { margin: 0 0 12px; }
+.check.ok { color: var(--ok); }
+.check.bad { color: var(--bad); }
+#ed-errors { margin: 0 0 12px; padding-left: 20px; color: var(--bad); }
+.dirty-mark { color: var(--warn); font-size: 13px; }
+
+/* ---------- Manual ---------- */
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+.group { border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px 14px; }
+.group h2 { margin-bottom: 10px; }
+.group.wide { grid-column: 1 / -1; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btns input[type=text] { flex: 1; min-width: 220px; font-family: var(--mono); }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.robot-btn small { display: block; font-size: 11.5px; color: var(--muted); }
+.tab button.primary small { color: inherit; opacity: .8; }
+
+/* ---------- Logs ---------- */
+.log-panel { margin-top: 16px; }
+pre.log {
+  margin: 0;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 12px;
+  font: 12.5px/1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  height: 300px;
+  overflow: auto;
+}
+#logs-view { height: 62vh; }
+.log .err { color: var(--bad); font-weight: 600; }
+.log .stop { color: var(--bad); }
+.log .step { color: var(--accent); }
+
+/* ---------- Notice ---------- */
+#notice {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 16px; border-radius: 6px;
+  background: var(--ink); color: var(--panel);
+  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+}
+#notice.bad { background: var(--bad); color: #fff; }
+
+@media (max-width: 860px) {
+  .bar { grid-template-columns: 1fr auto; }
+  .readouts { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; }
+  .readout { flex: 1; }
+  .split { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 28px 1fr auto; }
+  .row .args { grid-column: 2 / -1; grid-row: 2; }
+  .row-tools { grid-column: 3; grid-row: 1; }
+  main, nav.tabs, .job, .bar { padding-left: 12px; padding-right: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress div { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand"><b>GlassLab MVP2</b><span id="conn">Connecting…</span></div>
+  <div class="readouts" aria-live="polite">
+    <div class="readout" id="ro-door"><span>Oven door</span><b>–</b></div>
+    <div class="readout" id="ro-nano"><span>Door stepper</span><b>–</b></div>
+    <div class="readout" id="ro-ur5"><span>UR5</span><b>–</b></div>
+    <div class="readout" id="ro-safety"><span>UR5 safety</span><b>–</b></div>
+    <div class="readout" id="ro-prog"><span>UR5 program</span><b>–</b><small></small></div>
+  </div>
+  <button class="estop" id="stop" title="Stop the oven and the robot (Esc)">STOP<small>Esc</small></button>
+</header>
+
+<div class="job" id="job" data-state="idle">
+  <div class="job-text"><b id="job-title">Idle</b><span id="job-detail">Nothing is running.</span></div>
+  <button class="btn primary" id="btn-continue" hidden style="background:var(--warn);border-color:var(--warn);color:#fff;font-weight:600">Continue</button>
+  <div class="progress"><div id="job-bar"></div></div>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="run" aria-selected="true">Run</button>
+  <button role="tab" data-tab="recipes" aria-selected="false">Recipes</button>
+  <button role="tab" data-tab="manual" aria-selected="false">Manual control</button>
+  <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
+</nav>
+
+<main>
+  <!-- Run -->
+  <section class="tab" id="tab-run" role="tabpanel">
+    <div class="split">
+      <div>
+        <div class="pane-head"><h2>Recipes</h2></div>
+        <ul class="list" id="run-list"></ul>
+      </div>
+      <div>
+        <div class="detail-head">
+          <h2 id="run-title">Choose a recipe to run</h2>
+          <div class="actions">
+            <button id="btn-dry" disabled title="Step through without moving anything or waiting">Dry run</button>
+            <button id="btn-run" class="primary" disabled>Run recipe</button>
+          </div>
+        </div>
+        <p class="problems" id="run-problems" hidden></p>
+        <ol class="sequence" id="run-steps"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recipes -->
+  <section class="tab" id="tab-recipes" role="tabpanel" hidden>
+    <div class="split">
+      <div>
+        <div class="pane-head"><h2>Recipes</h2><button id="btn-new">New recipe</button></div>
+        <ul class="list" id="edit-list"></ul>
+      </div>
+      <div>
+        <div class="detail-head">
+          <label class="name-field">Name <input type="text" id="ed-name" maxlength="64" spellcheck="false" autocomplete="off"></label>
+          <span class="dirty-mark" id="ed-dirty" hidden>Unsaved changes</span>
+          <span class="spacer"></span>
+          <div class="seg" role="group" aria-label="Editor mode">
+            <button class="plain" data-mode="steps" aria-pressed="true">Steps</button>
+            <button class="plain" data-mode="text" aria-pressed="false">Text</button>
+          </div>
+        </div>
+        <div id="ed-steps-view">
+          <ol class="rows" id="ed-rows"></ol>
+          <div class="palette" id="palette"><span>Add step</span></div>
+        </div>
+        <div id="ed-text-view" hidden>
+          <textarea id="ed-text" spellcheck="false" aria-label="Recipe text"></textarea>
+        </div>
+        <p class="check" id="ed-check"></p>
+        <ul id="ed-errors" hidden></ul>
+        <div class="actions">
+          <button class="danger" id="ed-delete">Delete recipe</button>
+          <span class="spacer"></span>
+          <button id="ed-revert">Discard changes</button>
+          <button class="primary" id="ed-save">Save recipe</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Manual -->
+  <section class="tab" id="tab-manual" role="tabpanel" hidden>
+    <div class="controls">
+      <div class="group">
+        <h2>Oven door</h2>
+        <div class="btns">
+          <button class="man" data-line="door open">Open door</button>
+          <button class="man" data-line="door close">Close door</button>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Temperature</h2>
+        <div class="btns">
+          <input type="number" id="man-temp" min="1" value="1" aria-label="Number of button presses">
+          <span class="hint" style="margin:0">presses</span>
+          <button class="man" id="man-up">Turn up</button>
+          <button class="man" id="man-down">Turn down</button>
+        </div>
+      </div>
+      <div class="group wide">
+        <h2>Robot programs</h2>
+        <div class="btns" id="man-robot"></div>
+        <p class="hint">Programs that reach into the oven only start when the oven reports the door open.</p>
+      </div>
+      <div class="group wide">
+        <h2>Command</h2>
+        <form class="btns" id="man-form">
+          <input type="text" id="man-line" placeholder="temp up 2" spellcheck="false" autocomplete="off" aria-label="Command">
+          <button class="man primary" type="submit">Send command</button>
+        </form>
+        <p class="hint">Any recipe command works here: door open, temp down 3, robot pick, wait 10s, say note.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Logs -->
+  <section class="tab" id="tab-logs" role="tabpanel" hidden>
+    <div class="split">
+      <div>
+        <div class="pane-head"><h2>Log files</h2><button id="logs-refresh">Refresh</button></div>
+        <ul class="list" id="logs-list"></ul>
+      </div>
+      <div>
+        <div class="detail-head"><h2 id="logs-title">Choose a log file</h2></div>
+        <pre class="log" id="logs-view"></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="log-panel" id="live-log">
+    <div class="pane-head"><h2>Live log</h2><button class="btn" id="log-clear">Clear view</button></div>
+    <pre class="log" id="log" aria-live="polite"></pre>
+  </section>
+</main>
+
+<div id="notice" role="status" hidden></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const ROBOT_LABELS = {
+  pick: "Pick from idle", place: "Place at idle",
+  oven_pick: "Pick from oven", oven_place: "Place in oven",
+};
+const TYPES = {
+  door: "Door", temp: "Temperature", robot: "Robot program", wait: "Wait",
+  pause: "Pause for operator", say: "Log note", status: "Log status",
+  stop: "Stop all", comment: "Comment", raw: "Raw line",
+};
+const PALETTE = ["door", "temp", "robot", "wait", "pause", "say", "comment"];
+
+let config = { robot_programs: {}, needs_open_door: [], max_temp_steps: 20 };
+let recipes = [];
+let logSeq = 0;
+let last = { busy: false, job: null };
+let runSelected = null, runDetail = null, seqKey = "";
+
+// ---------- helpers ----------
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  let value;
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") el.className = v;
+    else if (k === "value") value = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, "");
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) el.append(c);
+  if (value !== undefined) el.value = value;
+  return el;
+}
+async function api(method, path, body) {
+  const opts = { method };
+  if (body !== undefined) {
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch("/api/" + path, opts);
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(data.error || `Request failed (HTTP ${r.status})`);
+  return data;
+}
+let noticeTimer;
+function notice(msg, bad) {
+  const n = $("#notice");
+  n.textContent = msg;
+  n.className = bad ? "bad" : "";
+  n.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (n.hidden = true), bad ? 7000 : 3500);
+}
+function fmtTime(s) {
+  s = Math.max(0, Math.round(s));
+  const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+  const p = (x) => String(x).padStart(2, "0");
+  return hh ? `${hh}:${p(mm)}:${p(ss)}` : `${mm}:${p(ss)}`;
+}
+function fmtDate(t) {
+  return new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function robotLabel(name) { return ROBOT_LABELS[name] || name; }
+
+// ---------- tabs ----------
+function showTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach((t) => (t.hidden = t.id !== "tab-" + name));
+  $("#live-log").hidden = !(name === "run" || name === "manual");
+  if (name === "logs") loadLogList();
+  if (name === "run" || name === "recipes") loadRecipes();
+}
+document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+// ---------- STOP ----------
+async function stopAll() {
+  try { await api("POST", "stop"); notice("Stop sent to the oven and the robot."); }
+  catch (e) { notice("Could not reach the controller: " + e.message, true); }
+}
+$("#stop").addEventListener("click", stopAll);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopAll(); });
+$("#btn-continue").addEventListener("click", async () => {
+  try { await api("POST", "continue"); } catch (e) { notice(e.message, true); }
+});
+
+// ---------- state polling ----------
+const TONE_OK = new Set(["open", "closed", "done", "idle", "running", "normal"]);
+const TONE_BAD = /offline|error|timeout|fault|protective|violation|emergency|busy|power_off|no_controller|disconnected/;
+function setReadout(id, value, sub, title) {
+  const el = $("#" + id);
+  const v = (value || "–").toString();
+  const low = v.toLowerCase();
+  el.dataset.tone = TONE_BAD.test(low) ? "bad" : TONE_OK.has(low) ? "ok" : v === "–" ? "" : id === "ro-prog" ? "" : "warn";
+  if (id === "ro-prog" && low === "playing") el.dataset.tone = "warn";
+  el.querySelector("b").textContent = v;
+  if (sub !== undefined) el.querySelector("small").textContent = sub;
+  el.title = title || "";
+}
+function renderHardware(hw) {
+  const o = hw.oven, u = hw.ur5;
+  if (!o) { setReadout("ro-door", "–"); setReadout("ro-nano", "–"); }
+  else if (o.error) { setReadout("ro-door", "offline", undefined, o.error); setReadout("ro-nano", "offline", undefined, o.error); }
+  else { setReadout("ro-door", o.door); setReadout("ro-nano", o.nano); }
+  if (!u) { setReadout("ro-ur5", "–"); setReadout("ro-safety", "–"); setReadout("ro-prog", "–", ""); }
+  else if (u.error) {
+    ["ro-ur5", "ro-safety"].forEach((id) => setReadout(id, "offline", undefined, u.error));
+    setReadout("ro-prog", "offline", "", u.error);
+  } else {
+    const strip = (s) => (s || "").replace(/^[^:]*:\s*/, "").toLowerCase();
+    setReadout("ro-ur5", strip(u.robotmode));
+    setReadout("ro-safety", strip(u.safetymode));
+    const parts = (u.programState || "").split(/\s+/);
+    setReadout("ro-prog", (parts[0] || "–").toLowerCase(), parts.slice(1).join(" "));
+  }
+}
+function renderJob(s) {
+  const j = s.job;
+  const box = $("#job");
+  document.body.classList.toggle("is-busy", s.busy);
+  document.body.classList.toggle("job-paused", !!j && j.state === "paused");
+  let title = "Idle", detail = "Nothing is running.", pct = 0, state = "idle";
+  if (j) {
+    state = j.state;
+    const what = j.kind === "recipe" ? (j.dry ? `dry run of ${j.name}` : j.name) : `manual: ${j.name}`;
+    const took = j.ended ? ` in ${fmtTime(j.ended - j.started)}` : "";
+    if (j.state === "running") {
+      title = j.kind === "recipe" ? `Running ${what}` : `Running ${what}`;
+      detail = j.kind === "recipe" && j.step ? `Step ${j.step} of ${j.total}` : "";
+      if (j.wait_left != null) detail += `${detail ? ", " : ""}waiting ${fmtTime(j.wait_left)} more`;
+    } else if (j.state === "paused") {
+      title = `Paused ${what}`;
+      detail = `${j.message}. Press Continue when ready.`;
+    } else if (j.state === "done") {
+      title = `Finished ${what}`; detail = `Completed${took}.`;
+    } else if (j.state === "stopped") {
+      title = `Stopped ${what}`; detail = j.message ? j.message.charAt(0).toUpperCase() + j.message.slice(1) + "." : "";
+    } else if (j.state === "error") {
+      title = `Failed ${what}`; detail = j.message;
+    }
+    if (j.kind === "recipe") pct = j.state === "done" ? 100 : j.total ? ((j.step - (j.state === "running" || j.state === "paused" ? 0.5 : 0)) / j.total) * 100 : 0;
+    else pct = j.state === "running" ? 50 : 100;
+  }
+  box.dataset.state = state;
+  $("#job-title").textContent = title;
+  $("#job-detail").textContent = detail;
+  $("#job-bar").style.width = Math.max(0, Math.min(100, pct)) + "%";
+  $("#btn-continue").hidden = !(j && j.state === "paused");
+  document.querySelectorAll("button.man").forEach((b) => (b.disabled = s.busy));
+  updateRunButtons();
+}
+function appendLog(lines) {
+  if (!lines.length) return;
+  const pre = $("#log");
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  for (const l of lines) {
+    const span = h("span", {}, l.text + "\n");
+    if (/ERROR|FAILED/.test(l.text)) span.className = "err";
+    else if (/STOP/.test(l.text)) span.className = "stop";
+    else if (/\]\s|\[\d+\/\d+\]/.test(l.text)) span.className = "step";
+    pre.append(span);
+  }
+  while (pre.childNodes.length > 1500) pre.firstChild.remove();
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+$("#log-clear").addEventListener("click", () => ($("#log").textContent = ""));
+
+async function poll() {
+  try {
+    const s = await api("GET", `state?since=${logSeq}`);
+    if (s.log_seq < logSeq) { logSeq = 0; $("#log").textContent = ""; }   // server restarted
+    else { appendLog(s.log); logSeq = s.log_seq; }
+    $("#conn").textContent = `Oven ${config.oven_host || ""}, UR5 ${config.ur5_host || ""}`;
+    $("#conn").className = "";
+    const jobChanged = JSON.stringify([last.job && last.job.state, last.job && last.job.name]) !==
+                       JSON.stringify([s.job && s.job.state, s.job && s.job.name]);
+    last = s;
+    renderHardware(s.hardware);
+    renderJob(s);
+    renderSequence();
+    if (jobChanged && s.job && ["done", "error", "stopped"].includes(s.job.state)) loadRecipes();
+  } catch (e) {
+    $("#conn").textContent = "Controller offline. Is web.py running?";
+    $("#conn").className = "offline-note";
+  } finally {
+    setTimeout(poll, 1000);
+  }
+}
+
+// ---------- recipes (shared lists) ----------
+async function loadRecipes() {
+  try { recipes = await api("GET", "recipes"); } catch (e) { notice(e.message, true); return; }
+  renderList($("#run-list"), runSelected, selectRun);
+  renderList($("#edit-list"), ed.original, (name) => openRecipe(name));
+  if (runSelected && !recipes.some((r) => r.name === runSelected)) { runSelected = null; runDetail = null; renderSequence(); }
+}
+function renderList(ul, current, onPick) {
+  ul.textContent = "";
+  if (!recipes.length) { ul.append(h("li", { class: "empty" }, "No recipes yet. Make one in the Recipes tab.")); return; }
+  for (const r of recipes) {
+    const meta = r.errors.length
+      ? h("small", { class: "bad" }, `${r.errors.length} problem${r.errors.length > 1 ? "s" : ""}`)
+      : h("small", {}, `${r.steps} steps, edited ${fmtDate(r.modified)}`);
+    ul.append(h("li", {}, h("button", { class: "plain", "aria-current": r.name === current, onclick: () => onPick(r.name) }, h("b", {}, r.name), meta)));
+  }
+}
+
+// ---------- run tab ----------
+async function selectRun(name) {
+  runSelected = name;
+  renderList($("#run-list"), runSelected, selectRun);
+  try { runDetail = await api("GET", "recipes/" + encodeURIComponent(name)); }
+  catch (e) { notice(e.message, true); runDetail = null; }
+  seqKey = "";
+  renderSequence();
+  updateRunButtons();
+}
+function activeRecipeJob() {
+  const j = last.job;
+  return j && j.kind === "recipe" && (j.state === "running" || j.state === "paused") ? j : null;
+}
+function renderSequence() {
+  const j = activeRecipeJob();
+  let title, steps, current = 0, problems = [];
+  if (j) {
+    title = j.dry ? `Dry run of ${j.name}` : `Running ${j.name}`;
+    steps = j.steps; current = j.step;
+  } else if (runDetail) {
+    title = runDetail.name; steps = runDetail.step_list; problems = runDetail.errors;
+  } else {
+    title = "Choose a recipe to run"; steps = [];
+  }
+  const key = JSON.stringify([title, current, j && j.state, steps.length, problems.length]);
+  if (key === seqKey) return;
+  seqKey = key;
+  $("#run-title").textContent = title;
+  const p = $("#run-problems");
+  p.hidden = !problems.length;
+  p.textContent = problems.map((e) => (e.line ? `Line ${e.line}: ${e.message}` : e.message)).join("  ") +
+    (problems.length ? ". Fix this in the Recipes tab before running." : "");
+  const ol = $("#run-steps");
+  ol.textContent = "";
+  steps.forEach((s, i) => {
+    const cls = i + 1 < current ? "done" : i + 1 === current ? "current" : "";
+    ol.append(h("li", { class: cls, title: `Line ${s.line} in the file` }, s.text));
+  });
+  const cur = ol.querySelector(".current");
+  if (cur) cur.scrollIntoView({ block: "nearest" });
+}
+function updateRunButtons() {
+  const ok = runDetail && !runDetail.errors.length && !last.busy;
+  $("#btn-run").disabled = !ok;
+  $("#btn-dry").disabled = !ok;
+}
+async function startRun(dry) {
+  if (!runDetail) return;
+  if (!dry && !confirm(`Run ${runDetail.name} on the oven and the robot?`)) return;
+  try { await api("POST", "run", { name: runDetail.name, dry }); }
+  catch (e) { notice(e.message, true); }
+}
+$("#btn-run").addEventListener("click", () => startRun(false));
+$("#btn-dry").addEventListener("click", () => startRun(true));
+
+// ---------- editor ----------
+const ed = { original: null, rows: [], dirty: false, mode: "steps", errors: [], savedText: "" };
+
+function defaults(cmd) {
+  const first = Object.keys(config.robot_programs)[0] || "";
+  return {
+    door: { a: "open" }, temp: { a: "up", b: 1 }, robot: { a: first }, wait: { a: 30, b: "s" },
+    pause: { a: "" }, say: { a: "" }, comment: { a: "" }, raw: { a: "" }, status: {}, stop: {},
+  }[cmd] || {};
+}
+function lineToRow(line) {
+  const t = line.trim();
+  if (!t) return { cmd: "comment", a: "", blank: true };
+  if (t.startsWith("#")) return { cmd: "comment", a: t.replace(/^#\s?/, "") };
+  if (t.includes("#")) return { cmd: "raw", a: t };
+  const w = t.split(/\s+/), c = w[0].toLowerCase(), rest = t.slice(w[0].length).trim();
+  const lw = w.map((x) => x.toLowerCase());
+  if (c === "door" && w.length === 2 && ["open", "close"].includes(lw[1])) return { cmd: "door", a: lw[1] };
+  if (c === "temp" && w.length === 3 && ["up", "down"].includes(lw[1]) && /^\d+$/.test(w[2])) return { cmd: "temp", a: lw[1], b: +w[2] };
+  if (c === "robot" && w.length === 2 && lw[1] in config.robot_programs) return { cmd: "robot", a: lw[1] };
+  if (c === "wait" && w.length === 2) {
+    const m = lw[1].match(/^(\d+(?:\.\d+)?)(s|m|min|h)?$/);
+    if (m) return { cmd: "wait", a: +m[1], b: m[2] === "min" ? "m" : m[2] || "s" };
+  }
+  if (c === "pause" || c === "say") return { cmd: c, a: rest };
+  if ((c === "status" || c === "stop") && w.length === 1) return { cmd: c };
+  return { cmd: "raw", a: t };
+}
+function rowToLine(r) {
+  switch (r.cmd) {
+    case "door": return `door ${r.a}`;
+    case "temp": return `temp ${r.a} ${r.b}`;
+    case "robot": return `robot ${r.a}`;
+    case "wait": return `wait ${r.a}${r.b}`;
+    case "pause": return `pause ${r.a || ""}`.trim();
+    case "say": return `say ${r.a || ""}`.trim();
+    case "comment": return r.a ? `# ${r.a}` : "";
+    case "raw": return r.a || "";
+    default: return r.cmd;
+  }
+}
+function currentText() {
+  return ed.mode === "text" ? $("#ed-text").value : ed.rows.map(rowToLine).join("\n");
+}
+function textToRows(text) {
+  return text.replace(/\s+$/, "").split("\n").filter((l, i, a) => !(a.length === 1 && !l.trim())).map(lineToRow);
+}
+
+function selectEl(options, value, onchange) {
+  return h("select", { value, onchange }, Object.entries(options).map(([v, label]) => h("option", { value: v }, label)));
+}
+function argWidgets(r) {
+  const set = (k, num) => (e) => { r[k] = num ? Number(e.target.value) : e.target.value; changed(); };
+  switch (r.cmd) {
+    case "door": return [selectEl({ open: "Open", close: "Close" }, r.a, set("a"))];
+    case "temp": return [selectEl({ up: "Up", down: "Down" }, r.a, set("a")),
+      h("input", { type: "number", min: 1, max: config.max_temp_steps, step: 1, value: r.b, oninput: set("b", true), "aria-label": "Presses" }),
+      h("span", { class: "unit" }, "presses")];
+    case "robot": {
+      const opts = {};
+      for (const [k, f] of Object.entries(config.robot_programs)) opts[k] = `${robotLabel(k)} (${k})`;
+      if (!(r.a in opts)) opts[r.a] = r.a;
+      return [selectEl(opts, r.a, set("a"))];
+    }
+    case "wait": return [h("input", { type: "number", min: 0, step: "any", value: r.a, oninput: set("a", true), "aria-label": "Duration" }),
+      selectEl({ s: "seconds", m: "minutes", h: "hours" }, r.b, set("b"))];
+    case "pause": return [h("input", { type: "text", value: r.a, oninput: set("a"), placeholder: "Message shown to the operator" })];
+    case "say": return [h("input", { type: "text", value: r.a, oninput: set("a"), placeholder: "Note written to the log" })];
+    case "comment": return [h("input", { type: "text", value: r.a, oninput: set("a"), placeholder: "Comment, not run (empty = blank line)" })];
+    case "raw": return [h("input", { type: "text", value: r.a, oninput: set("a"), placeholder: "Any recipe line" })];
+    default: return [h("span", { class: "unit" }, r.cmd === "stop" ? "Stops oven and robot motion" : "Writes oven and robot status to the log")];
+  }
+}
+function renderRows() {
+  const ol = $("#ed-rows");
+  ol.textContent = "";
+  ed.rows.forEach((r, i) => {
+    const move = (d) => () => {
+      const j = i + d;
+      if (j < 0 || j >= ed.rows.length) return;
+      [ed.rows[i], ed.rows[j]] = [ed.rows[j], ed.rows[i]];
+      renderRows(); changed();
+    };
+    ol.append(h("li", { class: "row", "data-cmd": r.cmd },
+      h("span", { class: "idx" }, String(i + 1)),
+      selectEl(TYPES, r.cmd, (e) => { ed.rows[i] = { cmd: e.target.value, ...defaults(e.target.value) }; renderRows(); changed(); }),
+      h("div", { class: "args" }, argWidgets(r)),
+      h("div", { class: "row-tools" },
+        h("button", { class: "plain", title: "Move up", "aria-label": "Move up", onclick: move(-1) }, "↑"),
+        h("button", { class: "plain", title: "Move down", "aria-label": "Move down", onclick: move(1) }, "↓"),
+        h("button", { class: "plain", title: "Remove step", "aria-label": "Remove step", onclick: () => { ed.rows.splice(i, 1); renderRows(); changed(); } }, "✕")),
+      h("p", { class: "row-error" })));
+  });
+  showErrors();
+}
+for (const cmd of PALETTE) {
+  $("#palette").append(h("button", { onclick: () => {
+    ed.rows.push({ cmd, ...defaults(cmd) });
+    renderRows(); changed();
+    const last = $("#ed-rows").lastElementChild;
+    if (last) { last.scrollIntoView({ block: "nearest" }); const f = last.querySelector(".args input, .args select"); if (f) f.focus(); }
+  } }, TYPES[cmd]));
+}
+
+let validateTimer;
+function changed() {
+  ed.dirty = currentText() !== ed.savedText || $("#ed-name").value.trim() !== (ed.original || "");
+  $("#ed-dirty").hidden = !ed.dirty;
+  clearTimeout(validateTimer);
+  validateTimer = setTimeout(validate, 250);
+}
+async function validate() {
+  try {
+    const res = await api("POST", "validate", { text: currentText() });
+    ed.errors = res.errors;
+    ed.steps = res.steps;
+  } catch (e) { ed.errors = [{ line: 0, message: e.message }]; }
+  showErrors();
+}
+function showErrors() {
+  const byLine = {};
+  for (const e of ed.errors) byLine[e.line] = e.message;
+  document.querySelectorAll("#ed-rows .row").forEach((li, i) => {
+    const msg = byLine[i + 1] || "";
+    li.querySelector(".row-error").textContent = msg;
+    li.classList.toggle("has-error", !!msg);
+  });
+  const check = $("#ed-check");
+  if (ed.errors.length) {
+    check.className = "check bad";
+    check.textContent = `${ed.errors.length} problem${ed.errors.length > 1 ? "s" : ""} to fix before this recipe can run.`;
+  } else {
+    check.className = "check ok";
+    check.textContent = `Ready to run: ${ed.steps || 0} steps.`;
+  }
+  const ul = $("#ed-errors");
+  ul.hidden = ed.mode !== "text" || !ed.errors.length;
+  ul.textContent = "";
+  for (const e of ed.errors) ul.append(h("li", {}, e.line ? `Line ${e.line}: ${e.message}` : e.message));
+}
+function setMode(mode) {
+  if (mode === ed.mode) return;
+  if (mode === "text") $("#ed-text").value = ed.rows.map(rowToLine).join("\n");
+  else ed.rows = textToRows($("#ed-text").value);
+  ed.mode = mode;
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === mode));
+  $("#ed-steps-view").hidden = mode !== "steps";
+  $("#ed-text-view").hidden = mode !== "text";
+  if (mode === "steps") renderRows();
+  showErrors();
+}
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+$("#ed-text").addEventListener("input", changed);
+$("#ed-name").addEventListener("input", changed);
+
+function loadIntoEditor(name, text) {
+  ed.original = name;
+  ed.savedText = text;
+  ed.rows = textToRows(text);
+  ed.errors = [];
+  $("#ed-name").value = name || "";
+  $("#ed-text").value = text;
+  $("#ed-delete").disabled = !name;
+  if (ed.mode === "steps") renderRows();
+  ed.savedText = currentText();   // normalised form, so a fresh load is not "dirty"
+  changed();
+  validate();
+  renderList($("#edit-list"), ed.original, (n) => openRecipe(n));
+}
+function confirmDiscard() {
+  return !ed.dirty || confirm("Discard unsaved changes to this recipe?");
+}
+async function openRecipe(name) {
+  if (name === ed.original || !confirmDiscard()) return;
+  try {
+    const r = await api("GET", "recipes/" + encodeURIComponent(name));
+    loadIntoEditor(r.name, r.text.replace(/\s+$/, ""));
+  } catch (e) { notice(e.message, true); }
+}
+$("#btn-new").addEventListener("click", () => {
+  if (!confirmDiscard()) return;
+  let n = 1, name = "new_recipe";
+  while (recipes.some((r) => r.name === name)) name = `new_recipe_${++n}`;
+  loadIntoEditor(null, "");
+  ed.rows = [{ cmd: "door", a: "open" }];
+  $("#ed-name").value = name;
+  if (ed.mode === "text") $("#ed-text").value = currentText();
+  renderRows(); changed();
+  $("#ed-name").focus(); $("#ed-name").select();
+});
+$("#ed-revert").addEventListener("click", async () => {
+  if (!ed.dirty) return;
+  if (!confirm("Discard unsaved changes?")) return;
+  if (ed.original) { ed.dirty = false; const n = ed.original; ed.original = null; await openRecipe(n); }
+  else loadIntoEditor(null, "");
+});
+$("#ed-save").addEventListener("click", async () => {
+  const name = $("#ed-name").value.trim();
+  if (!NAME_RE.test(name)) { notice("Use letters, numbers, - and _ in the name (no spaces).", true); $("#ed-name").focus(); return; }
+  const text = currentText();
+  const renamed = ed.original && ed.original !== name;
+  try {
+    await api("PUT", "recipes/" + encodeURIComponent(name), { text, create: !ed.original || renamed });
+    if (renamed) await api("DELETE", "recipes/" + encodeURIComponent(ed.original));
+    ed.original = name;
+    ed.savedText = text;
+    $("#ed-delete").disabled = false;
+    changed();
+    notice(ed.errors.length ? `Saved ${name}. It has problems and can't run yet.` : `Saved ${name}.`);
+    if (runSelected === name || (renamed && runSelected === name)) selectRun(name);
+    await loadRecipes();
+  } catch (e) { notice(e.message, true); }
+});
+$("#ed-delete").addEventListener("click", async () => {
+  if (!ed.original || !confirm(`Delete the recipe ${ed.original}? This can't be undone.`)) return;
+  try {
+    await api("DELETE", "recipes/" + encodeURIComponent(ed.original));
+    notice(`Deleted ${ed.original}.`);
+    if (runSelected === ed.original) { runSelected = null; runDetail = null; seqKey = ""; renderSequence(); }
+    ed.dirty = false;
+    loadIntoEditor(null, "");
+    await loadRecipes();
+  } catch (e) { notice(e.message, true); }
+});
+window.addEventListener("beforeunload", (e) => { if (ed.dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---------- manual ----------
+async function sendLine(line) {
+  try { await api("POST", "command", { line }); }
+  catch (e) { notice(e.message, true); }
+}
+document.querySelectorAll("button.man[data-line]").forEach((b) => b.addEventListener("click", () => sendLine(b.dataset.line)));
+$("#man-up").addEventListener("click", () => sendLine(`temp up ${$("#man-temp").value}`));
+$("#man-down").addEventListener("click", () => sendLine(`temp down ${$("#man-temp").value}`));
+$("#man-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const line = $("#man-line").value.trim();
+  if (line) sendLine(line);
+});
+function renderRobotButtons() {
+  const box = $("#man-robot");
+  box.textContent = "";
+  for (const [name, file] of Object.entries(config.robot_programs)) {
+    box.append(h("button", { class: "man robot-btn", title: file, onclick: () => sendLine(`robot ${name}`) },
+      robotLabel(name), h("small", {}, config.needs_open_door.includes(name) ? `${name}, needs open door` : name)));
+  }
+}
+
+// ---------- log files ----------
+let logSelected = null;
+async function loadLogList() {
+  let files;
+  try { files = await api("GET", "logs"); } catch (e) { notice(e.message, true); return; }
+  const ul = $("#logs-list");
+  ul.textContent = "";
+  if (!files.length) ul.append(h("li", { class: "empty" }, "No log files yet."));
+  for (const f of files) {
+    ul.append(h("li", {}, h("button", { class: "plain", "aria-current": f.name === logSelected, onclick: () => openLog(f.name) },
+      h("b", {}, f.name.replace(/\.log$/, "")), h("small", {}, `${fmtDate(f.modified)}, ${(f.size / 1024).toFixed(1)} kB`))));
+  }
+}
+async function openLog(name) {
+  logSelected = name;
+  try {
+    const r = await api("GET", "logs/" + encodeURIComponent(name));
+    $("#logs-title").textContent = name + (r.truncated ? " (last part only)" : "");
+    const pre = $("#logs-view");
+    pre.textContent = "";
+    for (const line of r.text.split("\n")) {
+      const span = h("span", {}, line + "\n");
+      if (/ERROR/.test(line)) span.className = "err";
+      else if (/STOP/.test(line)) span.className = "stop";
+      pre.append(span);
+    }
+    pre.scrollTop = pre.scrollHeight;
+  } catch (e) { notice(e.message, true); }
+  loadLogList();
+}
+$("#logs-refresh").addEventListener("click", () => { loadLogList(); if (logSelected) openLog(logSelected); });
+
+// ---------- start ----------
+(async function init() {
+  try { config = await api("GET", "config"); } catch (e) { notice("Could not load config: " + e.message, true); }
+  renderRobotButtons();
+  loadIntoEditor(null, "");
+  await loadRecipes();
+  if (recipes.length) { selectRun(recipes[0].name); openRecipe(recipes[0].name); }
+  poll();
+})();
+</script>
+</body>
+</html>

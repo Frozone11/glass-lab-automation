@@ -1,0 +1,17 @@
+2026-11-02 13:08:00  oven: door open
+2026-11-02 13:08:28  ABORTED by operator
+2026-11-02 13:08:28  STOP: stopping oven and UR5
+2026-11-02 13:08:34  oven: door close
+2026-11-02 13:08:44  ABORTED by operator
+2026-11-02 13:08:44  STOP: stopping oven and UR5
+2026-11-02 13:08:58  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 13:09:01  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 13:09:08  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 13:09:11  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 13:09:16  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 13:09:19  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 13:09:22  oven: door open
+2026-11-02 13:09:43  ABORTED by operator
+2026-11-02 13:09:43  STOP: stopping oven and UR5
+2026-11-02 13:09:51  ERROR: refusing 'robot oven_place': oven reports door 'unknown'
+2026-11-02 13:09:51  STOP: stopping oven and UR5

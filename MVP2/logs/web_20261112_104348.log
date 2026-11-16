@@ -1,0 +1,117 @@
+2026-11-12 10:43:48  web interface on http://127.0.0.1:8080  (Ctrl+C to quit)
+2026-11-12 10:43:56  manual: door open
+2026-11-12 10:43:56  oven: door open
+2026-11-12 10:43:57  oven: opening
+2026-11-12 10:44:03  oven: door is open
+2026-11-12 10:44:05  manual: door close
+2026-11-12 10:44:05  oven: door close
+2026-11-12 10:44:05  oven: closing
+2026-11-12 10:44:12  oven: door is closed
+2026-11-12 10:44:26  manual: robot pick
+2026-11-12 10:44:26  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 10:44:26  ERROR: UR5 play failed: Failed to execute: play
+2026-11-12 10:44:26  STOP: stopping oven and UR5
+2026-11-12 10:44:38  manual: robot pick
+2026-11-12 10:44:38  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 10:44:38  ERROR: UR5 play failed: Failed to execute: play
+2026-11-12 10:44:38  STOP: stopping oven and UR5
+2026-11-12 10:44:55  manual: temp up 1
+2026-11-12 10:44:55  oven: temp up 1
+2026-11-12 10:44:58  manual: temp up 1
+2026-11-12 10:44:58  oven: temp up 1
+2026-11-12 10:45:00  manual: temp down 1
+2026-11-12 10:45:00  oven: temp down 1
+2026-11-12 10:45:02  manual: temp down 1
+2026-11-12 10:45:02  oven: temp down 1
+2026-11-12 10:45:06  manual: temp up 1
+2026-11-12 10:45:06  oven: temp up 1
+2026-11-12 10:50:53  manual: robot pick
+2026-11-12 10:50:54  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 10:50:54  ERROR: UR5 play failed: Failed to execute: play
+2026-11-12 10:50:54  STOP: stopping oven and UR5
+2026-11-12 10:51:14  manual: robot pick
+2026-11-12 10:51:14  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 10:51:17  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-12 10:51:18  manual: robot place
+2026-11-12 10:51:19  UR5: running GlassLab_MVP2_place.urp
+2026-11-12 10:51:22  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-12 12:49:56  recipe two_stage_heating.txt: 27 steps
+2026-11-12 12:49:56  [1/27] say Stage 1: put crucible in the oven and heat
+2026-11-12 12:49:56  note: Stage 1: put crucible in the oven and heat
+2026-11-12 12:49:56  [2/27] robot pick
+2026-11-12 12:49:56  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 12:50:00  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-12 12:50:00  [3/27] door open
+2026-11-12 12:50:00  oven: door open
+2026-11-12 12:50:00  oven: opening
+2026-11-12 12:50:06  oven: door is open
+2026-11-12 12:50:06  [4/27] robot oven_place
+2026-11-12 12:50:06  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-12 12:50:13  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-12 12:50:13  [5/27] door close
+2026-11-12 12:50:13  oven: door close
+2026-11-12 12:50:14  oven: closing
+2026-11-12 12:50:20  oven: door is closed
+2026-11-12 12:50:20  [6/27] temp up 3
+2026-11-12 12:50:20  oven: temp up 3
+2026-11-12 12:50:22  [7/27] wait 30s
+2026-11-12 12:50:22  waiting 0:30
+2026-11-12 12:50:52  [8/27] say Take it out and turn the oven up more
+2026-11-12 12:50:52  note: Take it out and turn the oven up more
+2026-11-12 12:50:52  [9/27] door open
+2026-11-12 12:50:52  oven: door open
+2026-11-12 12:50:52  oven: opening
+2026-11-12 12:50:59  oven: door is open
+2026-11-12 12:50:59  [10/27] robot oven_pick
+2026-11-12 12:50:59  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-12 12:51:06  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-12 12:51:06  [11/27] door close
+2026-11-12 12:51:06  oven: door close
+2026-11-12 12:51:06  oven: closing
+2026-11-12 12:51:12  oven: door is closed
+2026-11-12 12:51:12  [12/27] robot place
+2026-11-12 12:51:12  UR5: running GlassLab_MVP2_place.urp
+2026-11-12 12:51:15  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-12 12:51:15  [13/27] temp up 2
+2026-11-12 12:51:15  oven: temp up 2
+2026-11-12 12:51:17  [14/27] wait 10s
+2026-11-12 12:51:17  waiting 0:10
+2026-11-12 12:51:27  [15/27] say Stage 2: back in at the higher setting
+2026-11-12 12:51:27  note: Stage 2: back in at the higher setting
+2026-11-12 12:51:27  [16/27] robot pick
+2026-11-12 12:51:27  UR5: running GlassLab_MVP2_pick.urp
+2026-11-12 12:51:30  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-12 12:51:30  [17/27] door open
+2026-11-12 12:51:30  oven: door open
+2026-11-12 12:51:30  oven: opening
+2026-11-12 12:51:37  oven: door is open
+2026-11-12 12:51:37  [18/27] robot oven_place
+2026-11-12 12:51:37  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-12 12:51:44  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-12 12:51:44  [19/27] door close
+2026-11-12 12:51:44  oven: door close
+2026-11-12 12:51:44  oven: closing
+2026-11-12 12:51:51  oven: door is closed
+2026-11-12 12:51:51  [20/27] wait 30s
+2026-11-12 12:51:51  waiting 0:30
+2026-11-12 12:52:21  [21/27] say Finish: take it out and turn the oven back down
+2026-11-12 12:52:21  note: Finish: take it out and turn the oven back down
+2026-11-12 12:52:21  [22/27] door open
+2026-11-12 12:52:21  oven: door open
+2026-11-12 12:52:21  oven: opening
+2026-11-12 12:52:27  oven: door is open
+2026-11-12 12:52:27  [23/27] robot oven_pick
+2026-11-12 12:52:27  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-12 12:52:34  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-12 12:52:34  [24/27] door close
+2026-11-12 12:52:34  oven: door close
+2026-11-12 12:52:34  oven: closing
+2026-11-12 12:52:41  oven: door is closed
+2026-11-12 12:52:41  [25/27] robot place
+2026-11-12 12:52:41  UR5: running GlassLab_MVP2_place.urp
+2026-11-12 12:52:44  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-12 12:52:44  [26/27] temp down 5
+2026-11-12 12:52:44  oven: temp down 5
+2026-11-12 12:52:47  [27/27] say Done
+2026-11-12 12:52:47  note: Done
+2026-11-12 12:52:47  recipe done in 2:51

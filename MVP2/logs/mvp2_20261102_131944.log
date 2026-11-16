@@ -1,0 +1,88 @@
+2026-11-02 13:19:46  oven: door open
+2026-11-02 13:19:46  oven: opening
+2026-11-02 13:19:52  oven: door is open
+2026-11-02 13:19:55  oven: door close
+2026-11-02 13:19:55  oven: closing
+2026-11-02 13:20:02  oven: door is closed
+2026-11-02 13:20:09  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 13:20:13  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 13:23:26  recipe two_stage_heating.txt: 27 steps
+2026-11-02 13:23:26  [1/27] say Stage 1: put crucible in the oven and heat
+2026-11-02 13:23:26  note: Stage 1: put crucible in the oven and heat
+2026-11-02 13:23:26  [2/27] robot pick
+2026-11-02 13:23:26  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 13:23:29  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 13:23:29  [3/27] door open
+2026-11-02 13:23:29  oven: door open
+2026-11-02 13:23:29  oven: opening
+2026-11-02 13:23:35  oven: door is open
+2026-11-02 13:23:35  [4/27] robot oven_place
+2026-11-02 13:23:35  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-02 13:23:42  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-02 13:23:42  [5/27] door close
+2026-11-02 13:23:42  oven: door close
+2026-11-02 13:23:42  oven: closing
+2026-11-02 13:23:49  oven: door is closed
+2026-11-02 13:23:49  [6/27] temp up 3
+2026-11-02 13:23:49  oven: temp up 3
+2026-11-02 13:23:51  [7/27] wait 2m
+2026-11-02 13:23:51  waiting 2:00
+2026-11-02 13:25:51  [8/27] say Take it out and turn the oven up more
+2026-11-02 13:25:51  note: Take it out and turn the oven up more
+2026-11-02 13:25:51  [9/27] door open
+2026-11-02 13:25:51  oven: door open
+2026-11-02 13:25:52  oven: opening
+2026-11-02 13:25:59  oven: door is open
+2026-11-02 13:25:59  [10/27] robot oven_pick
+2026-11-02 13:25:59  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-02 13:26:06  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-02 13:26:06  [11/27] door close
+2026-11-02 13:26:06  oven: door close
+2026-11-02 13:26:06  oven: closing
+2026-11-02 13:26:13  oven: door is closed
+2026-11-02 13:26:13  [12/27] robot place
+2026-11-02 13:26:13  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 13:26:16  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 13:26:16  [13/27] temp up 2
+2026-11-02 13:26:16  oven: temp up 2
+2026-11-02 13:26:18  [14/27] wait 30s
+2026-11-02 13:26:18  waiting 0:30
+2026-11-02 13:26:48  [15/27] say Stage 2: back in at the higher setting
+2026-11-02 13:26:48  note: Stage 2: back in at the higher setting
+2026-11-02 13:26:48  [16/27] robot pick
+2026-11-02 13:26:48  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 13:26:51  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 13:26:51  [17/27] door open
+2026-11-02 13:26:51  oven: door open
+2026-11-02 13:26:51  oven: opening
+2026-11-02 13:26:57  oven: door is open
+2026-11-02 13:26:57  [18/27] robot oven_place
+2026-11-02 13:26:58  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-02 13:27:05  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-02 13:27:05  [19/27] door close
+2026-11-02 13:27:05  oven: door close
+2026-11-02 13:27:05  oven: closing
+2026-11-02 13:27:12  oven: door is closed
+2026-11-02 13:27:12  [20/27] wait 2m
+2026-11-02 13:27:12  waiting 2:00
+2026-11-02 13:29:12  [21/27] say Finish: take it out and turn the oven back down
+2026-11-02 13:29:12  note: Finish: take it out and turn the oven back down
+2026-11-02 13:29:12  [22/27] door open
+2026-11-02 13:29:12  oven: door open
+2026-11-02 13:29:12  oven: opening
+2026-11-02 13:29:19  oven: door is open
+2026-11-02 13:29:19  [23/27] robot oven_pick
+2026-11-02 13:29:19  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-02 13:29:26  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-02 13:29:26  [24/27] door close
+2026-11-02 13:29:26  oven: door close
+2026-11-02 13:29:26  oven: closing
+2026-11-02 13:29:33  oven: door is closed
+2026-11-02 13:29:33  [25/27] robot place
+2026-11-02 13:29:33  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 13:29:36  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 13:29:36  [26/27] temp down 5
+2026-11-02 13:29:36  oven: temp down 5
+2026-11-02 13:29:39  [27/27] say Done
+2026-11-02 13:29:39  note: Done
+2026-11-02 13:29:39  recipe done in 6:14

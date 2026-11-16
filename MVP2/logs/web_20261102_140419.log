@@ -1,0 +1,86 @@
+2026-11-02 14:04:19  web interface on http://127.0.0.1:8080  (Ctrl+C to quit)
+2026-11-02 14:05:01  manual: door close
+2026-11-02 14:05:02  oven: door close
+2026-11-02 14:05:02  oven: closing
+2026-11-02 14:05:08  oven: door is closed
+2026-11-02 14:08:04  recipe two_stage_heating.txt: 27 steps
+2026-11-02 14:08:04  [1/27] say Stage 1: put crucible in the oven and heat
+2026-11-02 14:08:04  note: Stage 1: put crucible in the oven and heat
+2026-11-02 14:08:04  [2/27] robot pick
+2026-11-02 14:08:04  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 14:08:07  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 14:08:07  [3/27] door open
+2026-11-02 14:08:07  oven: door open
+2026-11-02 14:08:07  oven: opening
+2026-11-02 14:08:14  oven: door is open
+2026-11-02 14:08:14  [4/27] robot oven_place
+2026-11-02 14:08:14  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-02 14:08:21  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-02 14:08:21  [5/27] door close
+2026-11-02 14:08:21  oven: door close
+2026-11-02 14:08:21  oven: closing
+2026-11-02 14:08:28  oven: door is closed
+2026-11-02 14:08:28  [6/27] temp up 3
+2026-11-02 14:08:28  oven: temp up 3
+2026-11-02 14:08:30  [7/27] wait 2m
+2026-11-02 14:08:30  waiting 2:00
+2026-11-02 14:10:30  [8/27] say Take it out and turn the oven up more
+2026-11-02 14:10:30  note: Take it out and turn the oven up more
+2026-11-02 14:10:30  [9/27] door open
+2026-11-02 14:10:30  oven: door open
+2026-11-02 14:10:30  oven: opening
+2026-11-02 14:10:37  oven: door is open
+2026-11-02 14:10:37  [10/27] robot oven_pick
+2026-11-02 14:10:37  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-02 14:10:44  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-02 14:10:44  [11/27] door close
+2026-11-02 14:10:44  oven: door close
+2026-11-02 14:10:44  oven: closing
+2026-11-02 14:10:51  oven: door is closed
+2026-11-02 14:10:51  [12/27] robot place
+2026-11-02 14:10:51  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 14:10:54  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 14:10:54  [13/27] temp up 2
+2026-11-02 14:10:54  oven: temp up 2
+2026-11-02 14:10:55  [14/27] wait 30s
+2026-11-02 14:10:55  waiting 0:30
+2026-11-02 14:11:25  [15/27] say Stage 2: back in at the higher setting
+2026-11-02 14:11:25  note: Stage 2: back in at the higher setting
+2026-11-02 14:11:25  [16/27] robot pick
+2026-11-02 14:11:25  UR5: running GlassLab_MVP2_pick.urp
+2026-11-02 14:11:28  UR5: GlassLab_MVP2_pick.urp finished (0:03)
+2026-11-02 14:11:28  [17/27] door open
+2026-11-02 14:11:28  oven: door open
+2026-11-02 14:11:29  oven: opening
+2026-11-02 14:11:35  oven: door is open
+2026-11-02 14:11:35  [18/27] robot oven_place
+2026-11-02 14:11:35  UR5: running GlassLab_MVP2_oven_place.urp
+2026-11-02 14:11:42  UR5: GlassLab_MVP2_oven_place.urp finished (0:07)
+2026-11-02 14:11:42  [19/27] door close
+2026-11-02 14:11:42  oven: door close
+2026-11-02 14:11:42  oven: closing
+2026-11-02 14:11:49  oven: door is closed
+2026-11-02 14:11:49  [20/27] wait 2m
+2026-11-02 14:11:49  waiting 2:00
+2026-11-02 14:13:49  [21/27] say Finish: take it out and turn the oven back down
+2026-11-02 14:13:49  note: Finish: take it out and turn the oven back down
+2026-11-02 14:13:49  [22/27] door open
+2026-11-02 14:13:49  oven: door open
+2026-11-02 14:13:49  oven: opening
+2026-11-02 14:13:56  oven: door is open
+2026-11-02 14:13:56  [23/27] robot oven_pick
+2026-11-02 14:13:56  UR5: running GlassLab_MVP2_oven_pick.urp
+2026-11-02 14:14:03  UR5: GlassLab_MVP2_oven_pick.urp finished (0:07)
+2026-11-02 14:14:03  [24/27] door close
+2026-11-02 14:14:03  oven: door close
+2026-11-02 14:14:03  oven: closing
+2026-11-02 14:14:10  oven: door is closed
+2026-11-02 14:14:10  [25/27] robot place
+2026-11-02 14:14:10  UR5: running GlassLab_MVP2_place.urp
+2026-11-02 14:14:13  UR5: GlassLab_MVP2_place.urp finished (0:03)
+2026-11-02 14:14:13  [26/27] temp down 5
+2026-11-02 14:14:13  oven: temp down 5
+2026-11-02 14:14:16  [27/27] say Done
+2026-11-02 14:14:16  note: Done
+2026-11-02 14:14:16  recipe done in 6:13
+2026-11-02 14:18:14  web interface stopped

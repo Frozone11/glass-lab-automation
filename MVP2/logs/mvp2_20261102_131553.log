@@ -1,0 +1,5 @@
+2026-11-02 13:16:01  oven: {'raw': 'stopping'}
+2026-11-02 13:16:01  UR5: {'robotmode': 'Robotmode: RUNNING', 'safetymode': 'Safetymode: NORMAL', 'programState': 'STOPPED GlassLab_MVP2_pick.urp'}
+2026-11-02 13:16:17  oven: door open
+2026-11-02 13:16:33  ERROR: door did not report 'open' within 15s (last status: unknown)
+2026-11-02 13:16:33  STOP: stopping oven and UR5

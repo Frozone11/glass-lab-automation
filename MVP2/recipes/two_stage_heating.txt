@@ -1,0 +1,27 @@
+say Stage 1: put crucible in the oven and heat
+robot pick
+door open
+robot oven_place
+door close
+temp up 3
+wait 30s
+say Take it out and turn the oven up more
+door open
+robot oven_pick
+door close
+robot place
+temp up 2
+wait 10s
+say Stage 2: back in at the higher setting
+robot pick
+door open
+robot oven_place
+door close
+wait 30s
+say Finish: take it out and turn the oven back down
+door open
+robot oven_pick
+door close
+robot place
+temp down 5
+say Done

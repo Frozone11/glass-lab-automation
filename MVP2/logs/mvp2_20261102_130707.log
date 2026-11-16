@@ -1,0 +1,4 @@
+2026-11-02 13:07:19  oven: door open
+2026-11-02 13:07:21  ABORTED by operator
+2026-11-02 13:07:21  STOP: stopping oven and UR5
+2026-11-02 13:07:22    oven stop failed: oven not reachable at 192.168.12.50: <urlopen error [Errno 113] No route to host>
