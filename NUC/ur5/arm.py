@@ -68,25 +68,25 @@ class UR5:
             raise RuntimeError(f"tag {tag_id} not visible")
         return self.tcp() @ self.X @ T_ct
 
-    def calibrate_handeye(self, tag_id):
-        """Freedrive to ~15 poses looking at a fixed tag -> data/handeye.npy. Returns spread in mm."""
+    def calibrate_handeye(self):
+        """Freedrive to ~15 poses looking at the fixed chessboard -> handeye.npy. Returns spread in mm."""
         base_tcp, cam_tag = [], []
-        print("Tag must stay fixed. Vary position AND tilt (20-30 deg) between poses.")
-        while self.freedrive(f"[{len(base_tcp)}] new pose, q = done") != "q":
-            T_ct = self.cam.detect(tag_id)
+        print("Chessboard must stay fixed and fully in view. Vary position AND tilt a lot between poses.")
+        while self.freedrive(f"[{len(base_tcp)}] whole chessboard in view") != "q":
+            T_ct = self.cam.detect_board()
             if T_ct is None:
-                print("tag not seen, try again")
+                print("chessboard not found, try again (whole board in view, no glare)")
                 continue
             base_tcp.append(self.tcp())
             cam_tag.append(T_ct)
-            print(f"pose {len(base_tcp)}: tag at {np.linalg.norm(T_ct[:3, 3]) * 100:.0f} cm")
+            print(f"pose {len(base_tcp)}: board at {np.linalg.norm(T_ct[:3, 3]) * 100:.0f} cm")
         tilt = max(np.degrees(np.linalg.norm(cv2.Rodrigues((inv(A) @ B)[:3, :3])[0]))
                    for A in base_tcp for B in base_tcp)
         print(f"{len(base_tcp)} poses, largest rotation between two poses {tilt:.0f} deg (want 12+ poses, 40+ deg)")
         self.X = hand_eye(base_tcp, cam_tag)
         config.DATA.mkdir(parents=True, exist_ok=True)
         np.save(config.DATA / "handeye.npy", self.X)
-        # real-data check: the fixed tag should land in the same base position from every pose
+        # real-data check: the fixed board should land in the same base position from every pose
         pts = np.array([(B @ self.X @ C)[:3, 3] for B, C in zip(base_tcp, cam_tag)])
         spread = np.linalg.norm(pts - pts.mean(0), axis=1) * 1000
         print("per pose error (mm):", " ".join(f"{s:.0f}" for s in spread))  # one big number = one bad capture

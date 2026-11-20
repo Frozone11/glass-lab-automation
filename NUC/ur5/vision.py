@@ -57,6 +57,25 @@ def average(Ts):
     return T
 
 
+BOARD_OBJ = np.zeros((config.BOARD[0] * config.BOARD[1], 3), np.float32)
+BOARD_OBJ[:, :2] = np.mgrid[0:config.BOARD[0], 0:config.BOARD[1]].T.reshape(-1, 2) * config.SQUARE
+
+
+def find_board(gray):
+    """Chessboard corners (sub-pixel) or None. SB detector: robust to blur and uneven light."""
+    found, corners = cv2.findChessboardCornersSB(gray, config.BOARD, flags=cv2.CALIB_CB_EXHAUSTIVE)
+    return corners if found else None
+
+
+def board_pose(img, K, dist):
+    """T_cam_board from one image, or None. Far more accurate in angle than a small tag."""
+    corners = find_board(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    if corners is None:
+        return None
+    ok, r, t = cv2.solvePnP(BOARD_OBJ, corners, K, dist)
+    return to_T(list(t.ravel()) + list(r.ravel())) if ok else None
+
+
 def tag_pose(img, K, dist, tag_id):
     """T_cam_tag from one image, or None if the tag isn't seen."""
     corners, ids, _ = cv2.aruco.ArucoDetector(DICT).detectMarkers(img)
@@ -97,6 +116,13 @@ class Camera:
 
     def detect(self, tag_id, frames=10):
         """Average T_cam_tag over several frames, or None. The robot must stand still."""
+        return self._average_pose(lambda img: tag_pose(img, self.K, self.dist, tag_id), frames)
+
+    def detect_board(self, frames=5):
+        """Average T_cam_board over several frames, or None. The robot must stand still."""
+        return self._average_pose(lambda img: board_pose(img, self.K, self.dist), frames)
+
+    def _average_pose(self, pose_fn, frames):
         if not hasattr(self, "K"):
             raise RuntimeError(f"no {config.DATA / 'camera.npz'} - run intrinsics first")
         for _ in range(5):
@@ -104,7 +130,7 @@ class Camera:
         Ts = []
         for _ in range(frames * 3):
             ok, img = self.cap.read()
-            T = tag_pose(img, self.K, self.dist, tag_id) if ok else None
+            T = pose_fn(img) if ok else None
             if T is not None:
                 Ts.append(T)
             if len(Ts) == frames:
@@ -113,8 +139,6 @@ class Camera:
 
     def calibrate(self):
         """Interactive chessboard calibration -> data/camera.npz."""
-        obj = np.zeros((config.BOARD[0] * config.BOARD[1], 3), np.float32)
-        obj[:, :2] = np.mgrid[0:config.BOARD[0], 0:config.BOARD[1]].T.reshape(-1, 2) * config.SQUARE
         objs, imgs = [], []
         print("SPACE = capture (~20, near/far/tilted/corners of the image), q = done")
         while True:
@@ -122,8 +146,8 @@ class Camera:
             if not ok:
                 continue
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            # SB detector: more robust to blur and uneven light than findChessboardCorners, already sub-pixel
-            found, corners = cv2.findChessboardCornersSB(gray, config.BOARD, flags=cv2.CALIB_CB_EXHAUSTIVE)
+            corners = find_board(gray)
+            found = corners is not None
             show = img.copy()
             if found:
                 cv2.drawChessboardCorners(show, config.BOARD, corners, found)
@@ -132,7 +156,7 @@ class Camera:
             cv2.imshow("calibration", show)
             k = cv2.waitKey(1) & 0xFF
             if k == ord(" ") and found:
-                objs.append(obj)
+                objs.append(BOARD_OBJ)
                 imgs.append(corners)
             if k == ord("q"):
                 break

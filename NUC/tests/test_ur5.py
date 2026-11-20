@@ -5,7 +5,7 @@ import pytest
 
 import config
 from ur5.arm import UR5
-from ur5.vision import DICT, TAG_OBJ, average, hand_eye, inv, tag_pose, to_pose, to_T
+from ur5.vision import DICT, TAG_OBJ, average, board_pose, hand_eye, inv, tag_pose, to_pose, to_T
 
 rng = np.random.default_rng(0)
 
@@ -50,6 +50,34 @@ def test_tag_pose_from_rendered_image():
     assert got is not None
     assert np.linalg.norm(got[:3, 3] - T_ct[:3, 3]) < 0.003
     assert np.allclose(got[:3, :3], T_ct[:3, :3], atol=0.03)
+
+
+def test_board_pose_same_frame_from_any_roll():
+    """Render the chessboard at known poses with the camera rolled 0-270 deg: board_pose must always report the
+    same board frame (hand-eye breaks if the corner order flips with camera roll)."""
+    K = np.array([[900, 0, 640], [0, 900, 360], [0, 0, 1]], float)
+    sq, S = 40, config.SQUARE  # px per square in the flat board image, metres per square
+    nx, ny = config.BOARD[0] + 1, config.BOARD[1] + 1
+    flat = np.full((ny * sq + 2 * sq, nx * sq + 2 * sq), 255, np.uint8)
+    for i in range(nx):
+        for j in range(ny):
+            if (i + j) % 2 == 0:
+                flat[sq + j * sq:sq + (j + 1) * sq, sq + i * sq:sq + (i + 1) * sq] = 0
+    src = np.float32([[2 * sq, 2 * sq], [6 * sq, 2 * sq], [2 * sq, 6 * sq], [6 * sq, 6 * sq]])
+    pts = np.float32([[0, 0, 0], [4, 0, 0], [0, 4, 0], [4, 4, 0]]) * S
+    # OpenCV starts at the opposite corner of this rendering: fixed offset of 8 x 5 squares, turned 180 deg
+    D = to_T([8 * S, 5 * S, 0, 0, 0, np.pi])
+    for roll in (0, 90, 180, 270):
+        T = (to_T([0, 0, 0.5, 0, 0, np.radians(roll)]) @ to_T([0, 0, 0, 0.2, -0.15, 0])
+             @ to_T([-4 * S, -2.5 * S, 0, 0, 0, 0]))
+        dst, _ = cv2.projectPoints(pts, cv2.Rodrigues(T[:3, :3])[0], T[:3, 3], K, None)
+        H = cv2.getPerspectiveTransform(src, dst.reshape(4, 2).astype(np.float32))
+        img = cv2.warpPerspective(flat, H, (1280, 720), borderValue=255)
+        got = board_pose(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), K, np.zeros(5))
+        assert got is not None
+        expected = T @ D
+        assert np.linalg.norm(got[:3, 3] - expected[:3, 3]) < 0.002, roll
+        assert np.degrees(np.linalg.norm(cv2.Rodrigues(got[:3, :3].T @ expected[:3, :3])[0])) < 0.3, roll
 
 
 def test_hand_eye():

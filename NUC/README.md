@@ -20,7 +20,7 @@ Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` (measured), `GRIP_OPEN_DO` / `GR
 
 ## Milestone 1: place, drive away, come back, pick
 1. `python ur5_cli.py intrinsics` - camera calibration with the chessboard (error < 0.5 px)
-2. `python ur5_cli.py handeye 0` - tag 0 taped flat on the table, ~15 tilted poses (spread < 2-3 mm)
+2. `python ur5_cli.py handeye` - chessboard fixed on the table, ~15 tilted poses (spread < 2-3 mm)
 3. `python ur5_cli.py save-pose home` - a safe pose with the arm tucked in
 4. Put the crucible on the table next to the tag.
    `python ur5_cli.py teach spot 0` - far search pose (~50-60 cm), close view (~30 cm), then the grasp pose

@@ -2,7 +2,7 @@
 
 Setup (once):
     python ur5_cli.py intrinsics          # chessboard -> data/camera.npz
-    python ur5_cli.py handeye 0           # fixed tag 0, ~15 freedrive poses -> data/handeye.npy
+    python ur5_cli.py handeye             # fixed chessboard, ~15 freedrive poses -> handeye.npy
     python ur5_cli.py save-pose home      # freedrive to a safe home pose and save it
     python ur5_cli.py teach spot 0        # camera view + grasp pose relative to tag 0
 
@@ -22,7 +22,7 @@ def main(cmd, *args):
         return cam.calibrate()
     ur = UR5.connect(cam)
     if cmd == "handeye":
-        spread = ur.calibrate_handeye(int(args[0]))
+        spread = ur.calibrate_handeye()
         print(f"tag position spread: mean {spread.mean():.1f} mm, max {spread.max():.1f} mm (want < 2-3 mm)")
     elif cmd == "save-pose":
         ur.freedrive(f"Move to '{args[0]}'")
