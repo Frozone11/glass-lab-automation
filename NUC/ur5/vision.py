@@ -47,6 +47,16 @@ def hand_eye(base_tcp, cam_tag):
     return X
 
 
+def average(Ts):
+    """Average of several 4x4 poses: median translation, rotation = mean matrix projected back onto a rotation.
+    (Averaging rotation vectors breaks for a tag facing the camera: it sits at ~180 deg where they flip sign.)"""
+    U, _, Vt = np.linalg.svd(sum(T[:3, :3] for T in Ts))
+    T = np.eye(4)
+    T[:3, :3] = U @ np.diag([1, 1, np.linalg.det(U @ Vt)]) @ Vt
+    T[:3, 3] = np.median([T[:3, 3] for T in Ts], axis=0)
+    return T
+
+
 def tag_pose(img, K, dist, tag_id):
     """T_cam_tag from one image, or None if the tag isn't seen."""
     corners, ids, _ = cv2.aruco.ArucoDetector(DICT).detectMarkers(img)
@@ -89,18 +99,15 @@ class Camera:
         """Median T_cam_tag over several frames, or None. The robot must stand still."""
         for _ in range(5):
             self.cap.grab()  # drop stale buffered frames
-        poses = []
+        Ts = []
         for _ in range(frames * 3):
             ok, img = self.cap.read()
             T = tag_pose(img, self.K, self.dist, tag_id) if ok else None
             if T is not None:
-                poses.append(to_pose(T))
-            if len(poses) == frames:
+                Ts.append(T)
+            if len(Ts) == frames:
                 break
-        if len(poses) < frames // 2:
-            return None
-        # shortcut: per-component median of rotation vectors, fine for small jitter; use proper rotation averaging if noisy
-        return to_T(np.median(poses, axis=0))
+        return average(Ts) if len(Ts) >= frames // 2 else None
 
     def calibrate(self):
         """Interactive chessboard calibration -> data/camera.npz."""

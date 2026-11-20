@@ -5,7 +5,7 @@ import pytest
 
 import config
 from ur5.arm import UR5
-from ur5.vision import DICT, TAG_OBJ, hand_eye, inv, tag_pose, to_pose, to_T
+from ur5.vision import DICT, TAG_OBJ, average, hand_eye, inv, tag_pose, to_pose, to_T
 
 rng = np.random.default_rng(0)
 
@@ -22,6 +22,16 @@ def yaw(T_xyz, deg):
 def test_pose_roundtrip():
     T = rand_T()
     assert np.allclose(to_T(to_pose(T)), T)
+
+
+def test_average_near_180_deg():
+    """A tag facing the camera is ~180 deg rotated, where rotation vectors flip sign between frames."""
+    T0 = to_T([0, 0.01, 0.4, np.pi, 0, 0])
+    for _ in range(50):
+        Ts = [T0 @ to_T(list(rng.normal(0, 0.0005, 3)) + list(rng.normal(0, 0.01, 3))) for _ in range(10)]
+        err = np.degrees(np.linalg.norm(cv2.Rodrigues(average(Ts)[:3, :3].T @ T0[:3, :3])[0]))
+        assert err < 1.0
+        assert np.linalg.norm(average(Ts)[:3, 3] - T0[:3, 3]) < 0.001
 
 
 def test_tag_pose_from_rendered_image():
