@@ -8,7 +8,7 @@ ur5/vision.py    camera, AprilTag detection, transform math, hand-eye solver
 ur5/arm.py       UR5 class: named poses, gripper, teach/pick/place relative to a tag
 ur5_cli.py       command line for setup and testing
 tests/           offline tests (fake robot + camera)
-data/            calibration and taught poses (created by the CLI)
+~/glaslab-data/  calibration and taught poses, per device, created automatically (not in git)
 ```
 
 ## Setup

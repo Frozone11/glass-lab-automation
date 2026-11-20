@@ -96,7 +96,9 @@ class Camera:
                 return chr(k)
 
     def detect(self, tag_id, frames=10):
-        """Median T_cam_tag over several frames, or None. The robot must stand still."""
+        """Average T_cam_tag over several frames, or None. The robot must stand still."""
+        if not hasattr(self, "K"):
+            raise RuntimeError(f"no {config.DATA / 'camera.npz'} - run intrinsics first")
         for _ in range(5):
             self.cap.grab()  # drop stale buffered frames
         Ts = []
@@ -136,6 +138,6 @@ class Camera:
                 break
         cv2.destroyAllWindows()
         err, self.K, self.dist, _, _ = cv2.calibrateCamera(objs, imgs, gray.shape[::-1], None, None)
-        config.DATA.mkdir(exist_ok=True)
+        config.DATA.mkdir(parents=True, exist_ok=True)
         np.savez(config.DATA / "camera.npz", K=self.K, dist=self.dist, res=gray.shape[::-1])
         print(f"{len(objs)} images at {gray.shape[::-1]}, reprojection error {err:.3f} px (want < 0.5)")

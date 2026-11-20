@@ -15,7 +15,7 @@ def load(name):
 
 
 def save(name, data):
-    config.DATA.mkdir(exist_ok=True)
+    config.DATA.mkdir(parents=True, exist_ok=True)
     (config.DATA / f"{name}.json").write_text(json.dumps(data, indent=1))
 
 
@@ -61,6 +61,8 @@ class UR5:
     # ---- vision ----
     def locate(self, tag_id):
         """T_base_tag = T_base_tcp @ T_tcp_cam @ T_cam_tag."""
+        if self.X is None:
+            raise RuntimeError(f"no {config.DATA / 'handeye.npy'} - run handeye first")
         T_ct = self.cam.detect(tag_id)
         if T_ct is None:
             raise RuntimeError(f"tag {tag_id} not visible")
@@ -82,6 +84,7 @@ class UR5:
                    for A in base_tcp for B in base_tcp)
         print(f"{len(base_tcp)} poses, largest rotation between two poses {tilt:.0f} deg (want 12+ poses, 40+ deg)")
         self.X = hand_eye(base_tcp, cam_tag)
+        config.DATA.mkdir(parents=True, exist_ok=True)
         np.save(config.DATA / "handeye.npy", self.X)
         # real-data check: the fixed tag should land in the same base position from every pose
         pts = np.array([(B @ self.X @ C)[:3, 3] for B, C in zip(base_tcp, cam_tag)])
