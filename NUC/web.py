@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 import config
-from ur5.arm import UR5, load
+from ur5.arm import UR5, load, save
 from ur5.vision import DICT, Camera
 
 PAGE = Path(__file__).parent / "web" / "index.html"
@@ -125,6 +125,21 @@ def make_job(cam, action, d):
     raise ValueError(f"unknown action '{action}'")
 
 
+def delete(jobs, d):
+    """Remove a taught target or a saved pose (instant, not a job)."""
+    kind, name = d.get("kind"), str(d.get("name", ""))
+    if kind not in ("targets", "poses"):
+        raise ValueError("kind must be targets or poses")
+    if jobs.name:
+        raise ValueError(f"'{jobs.name}' is still running - finish or stop it first")
+    items = load(kind)
+    if name not in items:
+        raise ValueError(f"no {kind[:-1]} '{name}'")
+    del items[name]
+    save(kind, items)
+    jobs.say(f"deleted {kind[:-1]} '{name}'")
+
+
 def overlay(img, show_board):
     corners, ids, _ = cv2.aruco.ArucoDetector(DICT).detectMarkers(img)
     cv2.aruco.drawDetectedMarkers(img, corners, ids)
@@ -202,6 +217,8 @@ def make_server(cam, jobs, port=config.WEB_PORT):
                     jobs.answer(d["key"])
                 elif action == "stop":
                     jobs.stop()
+                elif action == "delete":
+                    delete(jobs, d)
                 else:
                     jobs.start(*make_job(cam, action, d))
                 self.send(200, {"ok": True})

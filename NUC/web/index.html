@@ -108,6 +108,10 @@ async function post(action, data = {}) {
   refresh();
 }
 
+function del(kind, name) {
+  if (confirm(`Delete ${kind === 'targets' ? 'target' : 'pose'} "${name}"?`)) post('delete', {kind, name});
+}
+
 function chip(id, text, cls) { $(id).textContent = text; $(id).className = 'chip ' + cls; }
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -133,9 +137,12 @@ async function refresh() {
   $('targets').innerHTML = s.targets.length ? s.targets.map(t =>
     `<tr><td><b>${esc(t.name)}</b> <span class="mute">tag ${t.tag}</span></td>
      <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('pick',{name:'${esc(t.name)}'})">Pick</button>
-         <button class="act" ${s.job ? 'disabled' : ''} onclick="post('place',{name:'${esc(t.name)}'})">Place</button></td></tr>`
+         <button class="act" ${s.job ? 'disabled' : ''} onclick="post('place',{name:'${esc(t.name)}'})">Place</button>
+         <button class="act" ${s.job ? 'disabled' : ''} title="Delete" onclick="del('targets','${esc(t.name)}')">✕</button></td></tr>`
   ).join('') : '<tr><td class="mute">No targets yet - teach one above.</td></tr>';
-  $('poses').textContent = 'Saved poses: ' + (s.poses.length ? s.poses.join(', ') : 'none');
+  $('poses').innerHTML = 'Saved poses: ' + (s.poses.length ? s.poses.map(p =>
+    `${esc(p)} <button class="act" ${s.job ? 'disabled' : ''} title="Delete" onclick="del('poses','${esc(p)}')">✕</button>`
+  ).join(' ') : 'none');
 
   const log = s.log.join('\n');
   if (log !== lastLog) { lastLog = log; $('log').textContent = log; $('log').scrollTop = 1e9; }

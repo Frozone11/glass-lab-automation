@@ -133,3 +133,15 @@ def test_calibration_job_through_http(server):
     post(url + "/api/answer", {"key": "done"})
     assert wait_until(lambda: json.loads(get(url + "/status")[1])["job"] is None)
     assert "finished" in jobs.log[-1]
+
+
+def test_delete_target_and_pose(server):
+    url, _ = server
+    (config.DATA / "targets.json").write_text(json.dumps({"spot": {"tag": 0}, "oven1": {"tag": 1}}))
+    (config.DATA / "poses.json").write_text(json.dumps({"home": [0] * 6}))
+    assert post(url + "/api/delete", {"kind": "targets", "name": "spot"}) == (200, {"ok": True})
+    assert post(url + "/api/delete", {"kind": "poses", "name": "home"}) == (200, {"ok": True})
+    s = json.loads(get(url + "/status")[1])
+    assert s["targets"] == [{"name": "oven1", "tag": 1}] and s["poses"] == []
+    assert post(url + "/api/delete", {"kind": "targets", "name": "spot"})[0] == 400   # already gone
+    assert post(url + "/api/delete", {"kind": "../etc", "name": "x"})[0] == 400
