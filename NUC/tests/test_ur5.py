@@ -100,8 +100,8 @@ class FakeRobot:
     def getActualQ(self): return to_pose(self.T)
     def moveJ(self, q, *a): self.T = to_T(q); return True
     def moveL(self, p, *a): self.T = to_T(p); self.moves.append(self.T.copy()); return True
-    def teachMode(self): pass
-    def endTeachMode(self): pass
+    def isProgramRunning(self): return True
+    def stopScript(self): pass
     def setStandardDigitalOut(self, i, v): self.do[i] = v
 
 

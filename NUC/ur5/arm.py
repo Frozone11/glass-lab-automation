@@ -36,6 +36,9 @@ class UR5:
     def move(self, kind, target, speed, acc, what):
         """moveJ/moveL that fails loudly: ur_rtde just returns False when the robot refuses a move."""
         print(f"-> {what}")
+        if not self.c.isProgramRunning():  # e.g. stopped by jogging on the pendant: moves then "succeed" without moving
+            print("   control script not running (pendant used?) - restarting it")
+            self.c.reuploadScript()
         if not getattr(self.c, kind)(list(target), speed, acc):
             raise RuntimeError(f"{kind} to {what} refused - check the pendant: protective stop, popup open, "
                                f"brakes not released, or pose out of reach")
@@ -44,10 +47,10 @@ class UR5:
         return to_T(self.r.getActualTCPPose())
 
     def freedrive(self, msg):
-        """Freedrive with a live camera view; returns 'q' if q was pressed."""
-        self.c.teachMode()
-        key = self.cam.preview(msg)
-        self.c.endTeachMode()
+        """Hand the arm to the user (pendant jogging or its freedrive button) with a live view; returns 'q' if q pressed.
+        Our control script is stopped so the pendant can move the arm; move() restarts it when needed."""
+        self.c.stopScript()
+        key = self.cam.preview(msg + " - move with the pendant")
         time.sleep(0.5)  # let the arm settle before grabbing images
         return key
 
