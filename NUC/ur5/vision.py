@@ -1,4 +1,7 @@
 """Wrist camera, ArUco tag detection and the transform math."""
+import threading
+import time
+
 import cv2
 import numpy as np
 
@@ -80,32 +83,52 @@ def tag_pose(img, K, dist, tag_id):
 
 
 class Camera:
+    """Owns the webcam: a background thread keeps the newest frame, so the web stream, tag detection and
+    calibration can all use the camera at the same time."""
+
     def __init__(self, index=config.CAM):
         self.cap = cv2.VideoCapture(index)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAM_RES[0])
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAM_RES[1])
-        f = config.DATA / "camera.npz"
-        if f.exists():
-            d = np.load(f)
-            self.K, self.dist = d["K"], d["dist"]
-            res = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-            if "res" in d and tuple(d["res"]) != res:
-                raise RuntimeError(f"camera.npz was made at {tuple(d['res'])}, camera now runs at {res}: rerun intrinsics")
+        self.frame, self.stamp = None, 0.0
+        self.cond = threading.Condition()
+        self.calib_error = f"no {config.DATA / 'camera.npz'} - run intrinsics first"
+        self._load_calibration()
+        threading.Thread(target=self._reader, daemon=True).start()
 
-    def preview(self, msg):
-        """Live view with detected tags outlined, until SPACE or q is pressed (window must have focus). Returns the key."""
-        det = cv2.aruco.ArucoDetector(DICT)
+    def _load_calibration(self):
+        f = config.DATA / "camera.npz"
+        if not f.exists():
+            return
+        d = np.load(f)
+        res = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if "res" in d and tuple(d["res"]) != res:
+            self.calib_error = f"camera.npz was made at {tuple(d['res'])}, camera now runs at {res}: rerun intrinsics"
+            return
+        self.K, self.dist, self.calib_error = d["K"], d["dist"], None
+
+    def _reader(self):
         while True:
             ok, img = self.cap.read()
-            if ok:
-                corners, ids, _ = det.detectMarkers(img)
-                cv2.aruco.drawDetectedMarkers(img, corners, ids)
-                cv2.putText(img, msg, (20, 40), 0, 0.7, (0, 255, 0), 2)
-                cv2.putText(img, "SPACE = continue, q = done", (20, 75), 0, 0.7, (0, 255, 0), 2)
-                cv2.imshow("camera", img)
-            k = cv2.waitKey(1) & 0xFF
-            if k in (ord(" "), ord("q")):
-                return chr(k)
+            if not ok:
+                time.sleep(0.2)  # camera unplugged / wrong index: keep trying
+                continue
+            with self.cond:
+                self.frame, self.stamp = img, time.time()
+                self.cond.notify_all()
+
+    def latest(self):
+        """Newest frame (or None if the camera never delivered one)."""
+        with self.cond:
+            return None if self.frame is None else self.frame.copy()
+
+    def fresh(self, timeout=2.0):
+        """First frame captured after this call - use when the robot just stopped moving."""
+        t0 = time.time()
+        with self.cond:
+            if not self.cond.wait_for(lambda: self.stamp > t0, timeout):
+                return None
+            return self.frame.copy()
 
     def detect(self, tag_id, frames=10):
         """Average T_cam_tag over several frames, or None. The robot must stand still."""
@@ -116,45 +139,37 @@ class Camera:
         return self._average_pose(lambda img: board_pose(img, self.K, self.dist), frames)
 
     def _average_pose(self, pose_fn, frames):
-        if not hasattr(self, "K"):
-            raise RuntimeError(f"no {config.DATA / 'camera.npz'} - run intrinsics first")
-        for _ in range(5):
-            self.cap.grab()  # drop stale buffered frames
+        if self.calib_error:
+            raise RuntimeError(self.calib_error)
+        self.fresh()  # skip a frame that may have been exposed while the arm was still settling
         Ts = []
         for _ in range(frames * 3):
-            ok, img = self.cap.read()
-            T = pose_fn(img) if ok else None
+            img = self.fresh()
+            T = pose_fn(img) if img is not None else None
             if T is not None:
                 Ts.append(T)
             if len(Ts) == frames:
                 break
         return average(Ts) if len(Ts) >= frames // 2 else None
 
-    def calibrate(self):
-        """Interactive chessboard calibration -> data/camera.npz."""
+    def calibrate(self, wait, log=print):
+        """Chessboard calibration -> camera.npz. wait(msg) returns 'next' (capture) or 'done'."""
         objs, imgs = [], []
-        print("SPACE = capture (~20, near/far/tilted/corners of the image), q = done")
-        while True:
-            ok, img = self.cap.read()
-            if not ok:
+        while wait(f"Hold the whole chessboard in view: near/far, tilted, in every corner of the image. "
+                   f"{len(objs)} captured, aim for ~20.") == "next":
+            img = self.fresh()
+            corners = find_board(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)) if img is not None else None
+            if corners is None:
+                log("chessboard not found, try again (whole board in view, no glare)")
                 continue
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            corners = find_board(gray)
-            found = corners is not None
-            show = img.copy()
-            if found:
-                cv2.drawChessboardCorners(show, config.BOARD, corners, found)
-            cv2.putText(show, f"{len(objs)} captured - board {'FOUND' if found else 'not found'}", (20, 40), 0, 1.0,
-                        (0, 255, 0) if found else (0, 0, 255), 2)
-            cv2.imshow("calibration", show)
-            k = cv2.waitKey(1) & 0xFF
-            if k == ord(" ") and found:
-                objs.append(BOARD_OBJ)
-                imgs.append(corners)
-            if k == ord("q"):
-                break
-        cv2.destroyAllWindows()
-        err, self.K, self.dist, _, _ = cv2.calibrateCamera(objs, imgs, gray.shape[::-1], None, None)
+            objs.append(BOARD_OBJ)
+            imgs.append(corners)
+            log(f"capture {len(objs)} ok")
+        if len(objs) < 5:
+            raise RuntimeError(f"only {len(objs)} captures - need at least 5, nothing saved")
+        size = img.shape[1::-1]
+        err, self.K, self.dist, _, _ = cv2.calibrateCamera(objs, imgs, size, None, None)
         config.DATA.mkdir(parents=True, exist_ok=True)
-        np.savez(config.DATA / "camera.npz", K=self.K, dist=self.dist, res=gray.shape[::-1])
-        print(f"{len(objs)} images at {gray.shape[::-1]}, reprojection error {err:.3f} px (want < 0.5)")
+        np.savez(config.DATA / "camera.npz", K=self.K, dist=self.dist, res=size)
+        self.calib_error = None
+        log(f"{len(objs)} images at {size}, reprojection error {err:.3f} px (want < 0.5)")

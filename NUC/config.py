@@ -17,4 +17,6 @@ SPEED, ACC = 0.05, 0.2          # linear moves near the object (m/s, m/s^2) - sl
 JSPEED, JACC = 0.5, 0.5         # joint moves (rad/s, rad/s^2)
 MAX_OFFSET = 0.30               # refuse if the tag is further than this from where it was taught (wrong tag / bad detection)
 
+WEB_PORT = 8000                 # control page: http://<NUC-IP>:8000
+
 DATA = Path.home() / "glaslab-data"   # calibration + taught poses: per device, outside the repo so git never sees it

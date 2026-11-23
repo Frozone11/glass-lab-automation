@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlasLab control</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1c1f24; --mute:#6b7280; --line:#e3e5e8;
+          --ok:#1f8a4c; --warn:#b7791f; --bad:#c53030; --act:#2563eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--card);
+           border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0 12px 0 0; }
+  .chip { padding:3px 10px; border-radius:99px; font-size:13px; background:#eef0f3; }
+  .chip.ok { background:#e3f4ea; color:var(--ok); } .chip.bad { background:#fde8e8; color:var(--bad); }
+  .chip.busy { background:#e6eefe; color:var(--act); }
+  #stop { margin-left:auto; background:var(--bad); color:#fff; font-weight:700; font-size:16px;
+          padding:10px 26px; border:0; border-radius:8px; cursor:pointer; }
+  main { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr); gap:16px; padding:16px; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); margin:0 0 10px; }
+  #cam { width:100%; border-radius:8px; background:#111; display:block; aspect-ratio:16/9; object-fit:contain; }
+  #prompt { border:2px solid var(--act); background:#f2f6ff; }
+  #prompt.idle { border-color:var(--line); background:var(--card); }
+  #msg { font-size:17px; margin-bottom:12px; min-height:1.4em; }
+  button { font:inherit; padding:7px 14px; border-radius:7px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.primary { background:var(--act); color:#fff; border-color:var(--act); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; width:9em; }
+  input.num { width:4.5em; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:6px 4px; border-top:1px solid var(--line); }
+  td:last-child { text-align:right; white-space:nowrap; }
+  .mute { color:var(--mute); font-size:13px; }
+  #log { font:12.5px/1.45 ui-monospace, monospace; background:#15181d; color:#d7dce2; border-radius:8px;
+         padding:10px; height:260px; overflow:auto; white-space:pre-wrap; margin:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GlasLab control</h1>
+  <span class="chip" id="c-cam">camera</span>
+  <span class="chip" id="c-int">camera calibration</span>
+  <span class="chip" id="c-he">hand-eye</span>
+  <span class="chip" id="c-job">idle</span>
+  <button id="stop" onclick="post('stop')">STOP</button>
+</header>
+
+<main>
+  <section>
+    <div class="card"><img id="cam" src="/stream" alt="wrist camera"><div class="mute" id="tags" style="margin-top:6px"></div></div>
+    <div class="card idle" id="prompt">
+      <div id="msg"></div>
+      <div class="row">
+        <button class="primary" id="next" onclick="post('answer',{key:'next'})">Continue</button>
+        <button id="done" onclick="post('answer',{key:'done'})">Done</button>
+      </div>
+    </div>
+    <div class="card"><h2>Log</h2><pre id="log"></pre></div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Calibration</h2>
+      <div class="row">
+        <button class="act" onclick="post('intrinsics')">Camera calibration</button>
+        <button class="act" onclick="post('handeye')">Hand-eye calibration</button>
+      </div>
+      <div class="mute">Both use the chessboard. Redo hand-eye if the camera mount moves.</div>
+    </div>
+
+    <div class="card">
+      <h2>Targets</h2>
+      <div class="row">
+        <input id="t-name" placeholder="name, e.g. oven1">
+        <input id="t-tag" class="num" type="number" min="0" max="49" placeholder="tag">
+        <button class="act" onclick="post('teach',{name:val('t-name'),tag:+val('t-tag')})">Teach</button>
+      </div>
+      <table id="targets"></table>
+    </div>
+
+    <div class="card">
+      <h2>Arm</h2>
+      <div class="row">
+        <button class="act" onclick="post('home')">Go home</button>
+        <button class="act" onclick="post('grip',{close:false})">Open gripper</button>
+        <button class="act" onclick="post('grip',{close:true})">Close gripper</button>
+      </div>
+      <div class="row">
+        <input id="p-name" value="home">
+        <button class="act" onclick="post('save_pose',{name:val('p-name')})">Save pose</button>
+      </div>
+      <div class="mute" id="poses"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const val = id => $(id).value.trim();
+
+async function post(action, data = {}) {
+  const r = await fetch('/api/' + action, {method: 'POST', body: JSON.stringify(data)});
+  if (!r.ok) alert((await r.json()).error);
+  refresh();
+}
+
+function chip(id, text, cls) { $(id).textContent = text; $(id).className = 'chip ' + cls; }
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+let lastLog = '';
+async function refresh() {
+  let s;
+  try { s = await (await fetch('/status')).json(); }
+  catch { chip('c-job', 'no connection to NUC', 'bad'); return; }
+
+  chip('c-cam', s.camera ? 'camera ok' : 'no camera', s.camera ? 'ok' : 'bad');
+  chip('c-int', s.intrinsics === 'ok' ? 'camera calibrated' : 'camera not calibrated', s.intrinsics === 'ok' ? 'ok' : 'bad');
+  $('c-int').title = s.intrinsics;
+  chip('c-he', s.handeye === 'ok' ? 'hand-eye calibrated' : 'hand-eye not done', s.handeye === 'ok' ? 'ok' : 'bad');
+  chip('c-job', s.job ? 'running: ' + s.job : 'idle', s.job ? 'busy' : '');
+  $('tags').textContent = 'Tags in view: ' + (s.tags_seen.length ? s.tags_seen.join(', ') : 'none');
+
+  $('prompt').className = 'card' + (s.waiting ? '' : ' idle');
+  $('msg').textContent = s.waiting ? s.msg : (s.job ? 'Working…' : 'Nothing running.');
+  $('next').disabled = $('done').disabled = !s.waiting;
+  document.querySelectorAll('button.act').forEach(b => b.disabled = !!s.job);
+
+  $('targets').innerHTML = s.targets.length ? s.targets.map(t =>
+    `<tr><td><b>${esc(t.name)}</b> <span class="mute">tag ${t.tag}</span></td>
+     <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('pick',{name:'${esc(t.name)}'})">Pick</button>
+         <button class="act" ${s.job ? 'disabled' : ''} onclick="post('place',{name:'${esc(t.name)}'})">Place</button></td></tr>`
+  ).join('') : '<tr><td class="mute">No targets yet - teach one above.</td></tr>';
+  $('poses').textContent = 'Saved poses: ' + (s.poses.length ? s.poses.join(', ') : 'none');
+
+  const log = s.log.join('\n');
+  if (log !== lastLog) { lastLog = log; $('log').textContent = log; $('log').scrollTop = 1e9; }
+}
+setInterval(refresh, 500);
+refresh();
+</script>
+</body>
+</html>

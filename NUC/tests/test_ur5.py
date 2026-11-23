@@ -117,16 +117,21 @@ class FakeCam:
 def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr(config, "GRIP_TIME", 0)
+    monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
     rob = FakeRobot()
     X = to_T([0.0, 0.06, 0.03, 0.05, -0.03, 0.02])          # camera slightly off the tool axis
     cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag flat on the table
-    ur = UR5(rob, rob, rob, cam)
-    ur.X = X
     search = to_T([0.45, 0.1, 0.6, np.pi, 0, 0])
     view = to_T([0.5, 0.1, 0.3, np.pi, 0, 0])
     grasp = to_T([0.5, 0.15, 0.04, np.pi, 0, 0])
     poses = iter([search, view, grasp])
-    ur.freedrive = lambda msg: setattr(rob, "T", next(poses))
+
+    def user(msg):  # the "user" jogs the arm to the next pose and clicks Continue
+        rob.T = next(poses)
+        return "next"
+
+    ur = UR5(rob, rob, rob, cam, user, log=lambda line: None)
+    ur.X = X
     ur.teach("spot", 0)
     return ur, rob, cam, grasp
 

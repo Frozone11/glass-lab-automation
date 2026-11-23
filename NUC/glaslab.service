@@ -1,0 +1,15 @@
+# Starts the control page when the NUC boots. Install: see README ("Run on boot").
+[Unit]
+Description=GlasLab NUC control page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=robotlab
+WorkingDirectory=/home/robotlab/glass-lab-automation/NUC
+ExecStart=/home/robotlab/glass-lab-automation/NUC/.venv/bin/python web.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

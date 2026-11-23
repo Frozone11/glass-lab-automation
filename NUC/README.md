@@ -1,30 +1,44 @@
 # GlasLab NUC control
 
-Runs on the NUC on the MiR. Will pull together MiR, UR5 and ovens; for now only the UR5.
+Runs on the NUC on the MiR and pulls MiR, UR5 and ovens together. For now: UR5 calibration, teaching and pick/place,
+all from a web page.
 
 ```
-config.py        all settings (IPs, camera, tag size, gripper outputs, speeds)
-ur5/vision.py    camera, AprilTag detection, transform math, hand-eye solver
+web.py           web server: control page, live camera, jobs (python web.py)
+web/index.html   the control page
+config.py        all settings (IPs, camera, tag size, gripper outputs, speeds, port)
+ur5/vision.py    camera, ArUco/chessboard detection, transform math, hand-eye solver
 ur5/arm.py       UR5 class: named poses, gripper, teach/pick/place relative to a tag
-ur5_cli.py       command line for setup and testing
-tests/           offline tests (fake robot + camera)
+tests/           offline tests (fake robot + camera):  python -m pytest
+glaslab.service  starts web.py on boot
 ~/glaslab-data/  calibration and taught poses, per device, created automatically (not in git)
 ```
 
 ## Setup
 ```bash
-pip install -r requirements.txt
-python -m pytest              # offline tests, should all pass
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -r requirements.txt
+python -m pytest
 ```
-Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` (measured), `GRIP_OPEN_DO` / `GRIP_CLOSE_DO`.
+Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` and `SQUARE` (measured), `GRIP_OPEN_DO` / `GRIP_CLOSE_DO`.
 
-## Milestone 1: place, drive away, come back, pick
-1. `python ur5_cli.py intrinsics` - camera calibration with the chessboard (error < 0.5 px)
-2. `python ur5_cli.py handeye` - chessboard fixed on the table, ~15 tilted poses (spread < 2-3 mm)
-3. `python ur5_cli.py save-pose home` - a safe pose with the arm tucked in
-4. Put the crucible on the table next to the tag.
-   `python ur5_cli.py teach spot 0` - far search pose (~50-60 cm), close view (~30 cm), then the grasp pose
-5. `python ur5_cli.py pick spot` - test with the MiR not moved
-6. `python ur5_cli.py place spot`, drive the MiR away and back, `python ur5_cli.py pick spot`
+## Use
+`python web.py`, then open http://localhost:8000 on the NUC, or http://<NUC-IP>:8000 from another computer
+on the same network. When a step needs you, the page shows what to do: move the arm with the pendant, then
+**Continue**. **Done** ends a loop (calibration captures). **STOP** halts the arm - the E-stop is still the real one.
 
-Keep a hand on the E-stop for the first runs: the arm drives to computed poses.
+1. Camera calibration - chessboard, ~20 captures (error < 0.5 px)
+2. Hand-eye calibration - chessboard fixed, 12+ tilted poses (spread < 2-3 mm)
+3. Save pose `home` - tucked in over the platform
+4. Teach a target (e.g. `spot`, tag 0) - search pose, close view, grasp pose
+5. Pick / Place
+
+## Run on boot
+```bash
+sudo cp glaslab.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now glaslab
+```
+Logs: `journalctl -u glaslab -f`. After a `git pull`: `sudo systemctl restart glaslab`.
+The service assumes user `robotlab` and the repo in `~/glass-lab-automation`; edit the paths in
+`glaslab.service` if that differs.
