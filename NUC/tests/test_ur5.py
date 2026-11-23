@@ -140,7 +140,8 @@ def test_pick_follows_moved_tag(setup):
     pre, at, back = rob.moves[-3:]
     assert np.linalg.norm(at[:3, 3] - expected[:3, 3]) < 1e-6
     assert np.allclose(at[:3, :3], expected[:3, :3], atol=1e-6)
-    assert np.isclose(np.linalg.norm(pre[:3, 3] - at[:3, 3]), config.APPROACH)
+    assert np.allclose(pre[:3, 3] - at[:3, 3], [0, 0, config.APPROACH])   # straight above
+    assert np.allclose(pre[:3, :3], at[:3, :3])                           # same orientation on the way down
     assert np.allclose(back, pre)
     assert rob.do == {config.GRIP_OPEN_DO: False, config.GRIP_CLOSE_DO: True}
 

@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 import config
-from ur5.vision import hand_eye, inv, shift_z, to_pose, to_T
+from ur5.vision import hand_eye, inv, to_pose, to_T
 
 
 def load(name):
@@ -130,7 +130,8 @@ class UR5:
         return T_bt @ np.array(t["tag_grasp"])
 
     def _in_out(self, T, action):
-        pre = shift_z(T, -config.APPROACH)
+        pre = T.copy()
+        pre[2, 3] += config.APPROACH  # straight above in the robot base frame: the gripper is made to come down vertically
         self.move("moveL", to_pose(pre), config.SPEED * 3, config.ACC, "approach")
         self.move("moveL", to_pose(T), config.SPEED, config.ACC, "grasp pose")
         action()

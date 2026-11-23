@@ -12,7 +12,7 @@ BOARD, SQUARE = (9, 6), 0.025   # chessboard inner corners, square size in metre
 GRIP_OPEN_DO, GRIP_CLOSE_DO = 0, 1   # control box digital outputs wired to the Schunk EGP
 GRIP_TIME = 1.0                      # s to wait for the gripper to finish moving
 
-APPROACH = 0.10                 # m to back off along tool z before/after grasping
+APPROACH = 0.10                 # m straight above the grasp pose to come down from / go back up to
 SPEED, ACC = 0.05, 0.2          # linear moves near the object (m/s, m/s^2) - slow until trusted
 JSPEED, JACC = 0.5, 0.5         # joint moves (rad/s, rad/s^2)
 MAX_OFFSET = 0.30               # refuse if the tag is further than this from where it was taught (wrong tag / bad detection)

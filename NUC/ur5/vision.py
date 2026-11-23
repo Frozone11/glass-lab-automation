@@ -22,13 +22,6 @@ def to_pose(T):
     return [float(v) for v in T[:3, 3]] + [float(v) for v in cv2.Rodrigues(T[:3, :3])[0].ravel()]
 
 
-def shift_z(T, d):
-    """Move d metres along the frame's own z axis (tool z for a TCP pose)."""
-    S = np.eye(4)
-    S[2, 3] = d
-    return T @ S
-
-
 def hand_eye(base_tcp, cam_tag):
     """Solve AX = XB for X = T_tcp_cam (Park & Martin), using all pose pairs.
     Own version because cv2.calibrateHandEye is missing from some OpenCV 5 builds."""
