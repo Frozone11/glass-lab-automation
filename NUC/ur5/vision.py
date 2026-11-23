@@ -87,32 +87,44 @@ class Camera:
     calibration can all use the camera at the same time."""
 
     def __init__(self, index=config.CAM):
-        self.cap = cv2.VideoCapture(index)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAM_RES[0])
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAM_RES[1])
+        self.index, self.K, self.dist, self.calib_res = index, None, None, None
         self.frame, self.stamp = None, 0.0
         self.cond = threading.Condition()
-        self.calib_error = f"no {config.DATA / 'camera.npz'} - run intrinsics first"
-        self._load_calibration()
+        self._open()
+        f = config.DATA / "camera.npz"
+        if f.exists():
+            d = np.load(f)
+            self.K, self.dist = d["K"], d["dist"]
+            self.calib_res = tuple(int(x) for x in d["res"]) if "res" in d else None
         threading.Thread(target=self._reader, daemon=True).start()
 
-    def _load_calibration(self):
-        f = config.DATA / "camera.npz"
-        if not f.exists():
-            return
-        d = np.load(f)
-        res = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        if "res" in d and tuple(d["res"]) != res:
-            self.calib_error = f"camera.npz was made at {tuple(d['res'])}, camera now runs at {res}: rerun intrinsics"
-            return
-        self.K, self.dist, self.calib_error = d["K"], d["dist"], None
+    def _open(self):
+        self.cap = cv2.VideoCapture(self.index)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAM_RES[0])
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAM_RES[1])
+
+    @property
+    def calib_error(self):
+        """None if the camera calibration is usable, else what is wrong."""
+        if self.K is None:
+            return f"no {config.DATA / 'camera.npz'} - run camera calibration first"
+        img = self.latest()
+        if img is not None and self.calib_res and img.shape[1::-1] != self.calib_res:
+            return f"calibrated at {self.calib_res}, camera now gives {img.shape[1::-1]}: redo camera calibration"
+        return None
 
     def _reader(self):
+        fails = 0
         while True:
             ok, img = self.cap.read()
             if not ok:
-                time.sleep(0.2)  # camera unplugged / wrong index: keep trying
+                fails += 1
+                if fails % 10 == 0:  # unplugged, or plugged in after boot: reopen every ~2 s until it works
+                    self.cap.release()
+                    self._open()
+                time.sleep(0.2)
                 continue
+            fails = 0
             with self.cond:
                 self.frame, self.stamp = img, time.time()
                 self.cond.notify_all()
@@ -139,8 +151,8 @@ class Camera:
         return self._average_pose(lambda img: board_pose(img, self.K, self.dist), frames)
 
     def _average_pose(self, pose_fn, frames):
-        if self.calib_error:
-            raise RuntimeError(self.calib_error)
+        if err := self.calib_error:
+            raise RuntimeError(err)
         self.fresh()  # skip a frame that may have been exposed while the arm was still settling
         Ts = []
         for _ in range(frames * 3):
@@ -171,5 +183,5 @@ class Camera:
         err, self.K, self.dist, _, _ = cv2.calibrateCamera(objs, imgs, size, None, None)
         config.DATA.mkdir(parents=True, exist_ok=True)
         np.savez(config.DATA / "camera.npz", K=self.K, dist=self.dist, res=size)
-        self.calib_error = None
+        self.calib_res = tuple(size)
         log(f"{len(objs)} images at {size}, reprojection error {err:.3f} px (want < 0.5)")
