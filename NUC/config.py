@@ -1,8 +1,8 @@
 """All settings in one place. Edit these to match the hardware."""
 from pathlib import Path
 
-ROBOT_IP = "192.168.12.20"      # UR5 controller
-CAM = 2                         # cv2.VideoCapture index of the wrist camera (v4l2-ctl --list-devices)
+ROBOT_IP = "192.168.12.148"      # UR5 controller
+CAM = 0                         # cv2.VideoCapture index of the wrist camera (v4l2-ctl --list-devices)
 CAM_RES = (1280, 720)           # recalibrate (intrinsics) if you change this
 
 TAG_DICT = "DICT_4X4_50"        # ArUco 4x4: big cells, so it still reads well when printed small

@@ -33,6 +33,13 @@ class UR5:
                    rtde_io.RTDEIOInterface(ip), cam)
 
     # ---- basics ----
+    def move(self, kind, target, speed, acc, what):
+        """moveJ/moveL that fails loudly: ur_rtde just returns False when the robot refuses a move."""
+        print(f"-> {what}")
+        if not getattr(self.c, kind)(list(target), speed, acc):
+            raise RuntimeError(f"{kind} to {what} refused - check the pendant: protective stop, popup open, "
+                               f"brakes not released, or pose out of reach")
+
     def tcp(self):
         return to_T(self.r.getActualTCPPose())
 
@@ -51,7 +58,7 @@ class UR5:
 
     def go(self, name):
         """Joint move to a pose saved with save_pose (fixed relative to the MiR: home, park, ...)."""
-        self.c.moveJ(load("poses")[name], config.JSPEED, config.JACC)
+        self.move("moveJ", load("poses")[name], config.JSPEED, config.JACC, name)
 
     def save_pose(self, name):
         poses = load("poses")
@@ -109,21 +116,22 @@ class UR5:
     def find(self, name):
         """Search from far, refine from the taught close view, return T_base_grasp."""
         t = load("targets")[name]
-        self.c.moveJ(t["q_search"], config.JSPEED, config.JACC)
+        self.move("moveJ", t["q_search"], config.JSPEED, config.JACC, "search pose")
         T_bt = self.locate(t["tag"])                                    # coarse, wide view
         off = np.linalg.norm(T_bt[:3, 3] - np.array(t["base_tag"])[:3, 3])
         if off > config.MAX_OFFSET:
             raise RuntimeError(f"tag {t['tag']} is {off * 100:.0f} cm from where it was taught - not moving")
-        self.c.moveL(to_pose(T_bt @ np.array(t["tag_view"])), config.SPEED * 3, config.ACC)
+        print(f"   tag {t['tag']} found, {off * 100:.1f} cm from where it was taught")
+        self.move("moveL", to_pose(T_bt @ np.array(t["tag_view"])), config.SPEED * 3, config.ACC, "close view")
         T_bt = self.locate(t["tag"])                                    # fine, same view as when taught
         return T_bt @ np.array(t["tag_grasp"])
 
     def _in_out(self, T, action):
         pre = shift_z(T, -config.APPROACH)
-        self.c.moveL(to_pose(pre), config.SPEED * 3, config.ACC)
-        self.c.moveL(to_pose(T), config.SPEED, config.ACC)
+        self.move("moveL", to_pose(pre), config.SPEED * 3, config.ACC, "approach")
+        self.move("moveL", to_pose(T), config.SPEED, config.ACC, "grasp pose")
         action()
-        self.c.moveL(to_pose(pre), config.SPEED, config.ACC)
+        self.move("moveL", to_pose(pre), config.SPEED, config.ACC, "retract")
 
     def pick(self, name):
         self.gripper(close=False)

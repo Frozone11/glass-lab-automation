@@ -98,8 +98,8 @@ class FakeRobot:
 
     def getActualTCPPose(self): return to_pose(self.T)
     def getActualQ(self): return to_pose(self.T)
-    def moveJ(self, q, *a): self.T = to_T(q)
-    def moveL(self, p, *a): self.T = to_T(p); self.moves.append(self.T.copy())
+    def moveJ(self, q, *a): self.T = to_T(q); return True
+    def moveL(self, p, *a): self.T = to_T(p); self.moves.append(self.T.copy()); return True
     def teachMode(self): pass
     def endTeachMode(self): pass
     def setStandardDigitalOut(self, i, v): self.do[i] = v
@@ -143,6 +143,13 @@ def test_pick_follows_moved_tag(setup):
     assert np.isclose(np.linalg.norm(pre[:3, 3] - at[:3, 3]), config.APPROACH)
     assert np.allclose(back, pre)
     assert rob.do == {config.GRIP_OPEN_DO: False, config.GRIP_CLOSE_DO: True}
+
+
+def test_refused_move_raises(setup):
+    ur, rob, cam, _ = setup
+    rob.moveJ = lambda *a: False  # what ur_rtde does in protective stop etc.
+    with pytest.raises(RuntimeError, match="refused"):
+        ur.pick("spot")
 
 
 def test_refuses_far_offset(setup):
