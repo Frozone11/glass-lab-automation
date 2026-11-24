@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 import config
-from ur5.vision import hand_eye, inv, to_pose, to_T
+from ur5.vision import BOARD_CENTRE, hand_eye, inv, orbit, to_pose, to_T
 
 
 def load(name):
@@ -87,27 +87,74 @@ class UR5:
         return self.tcp() @ self.X @ T_ct
 
     def calibrate_handeye(self):
-        """Freedrive to ~15 poses looking at the fixed chessboard -> handeye.npy. Returns spread in mm."""
-        base_tcp, cam_tag = [], []
+        """Manual: user jogs to ~15 poses looking at the fixed chessboard -> handeye.npy. Returns spread in mm."""
+        base_tcp, cam_board = [], []
         while self.freedrive(f"Hand-eye pose {len(base_tcp) + 1}: whole chessboard in view, 30-60 cm. Vary position AND "
                              f"tilt/roll a lot between poses. Continue = capture, Done = finish (12+ poses).") != "done":
-            T_ct = self.cam.detect_board()
-            if T_ct is None:
-                self.log("chessboard not found, try again (whole board in view, no glare)")
-                continue
-            base_tcp.append(self.tcp())
-            cam_tag.append(T_ct)
-            self.log(f"pose {len(base_tcp)}: board at {np.linalg.norm(T_ct[:3, 3]) * 100:.0f} cm")
+            self._capture_board(base_tcp, cam_board, f"pose {len(base_tcp) + 1}")
+        return self._finish_handeye(base_tcp, cam_board)
+
+    def auto_handeye(self):
+        """Automatic: chessboard fixed on the MiR deck. From the saved 'board_view' pose the arm wiggles for a rough
+        calibration, then orbits the board centre with big tilts and rolls, and solves. Returns spread in mm."""
+        if "board_view" not in load("poses"):
+            self.freedrive("First time only: point the camera at the WHOLE chessboard on the MiR, ~35 cm away, roughly "
+                           "straight on, with room around the arm. This view is saved as 'board_view'.")
+            self.save_pose("board_view")
+        self.go("board_view")
+        base_tcp, cam_board = [], []
+        if not self._capture_board(base_tcp, cam_board, "start"):
+            raise RuntimeError("chessboard not visible from 'board_view' - delete that pose and set it again")
+        T0 = self.tcp()
+        # 1) small wiggles about the tool axes -> rough camera position on the wrist
+        for axis in np.eye(3):
+            for sign in (1, -1):
+                W = np.eye(4)
+                W[:3, :3] = cv2.Rodrigues(axis * sign * np.radians(6))[0]
+                if self._visit(T0 @ W, "wiggle"):
+                    self._capture_board(base_tcp, cam_board, "wiggle")
+        if len(base_tcp) < 4:
+            raise RuntimeError("board lost during the small moves - start with the board more centred in the image")
+        X = hand_eye(base_tcp, cam_board)
+        # 2) orbit the board centre: same distance, board stays mid-image
+        centre = (base_tcp[0] @ X @ cam_board[0] @ np.array([*BOARD_CENTRE, 0, 1]))[:3]
+        for i, cam in enumerate(orbit(base_tcp[0] @ X, centre)):
+            if self._visit(cam @ inv(X), f"orbit {i + 1}"):
+                self._capture_board(base_tcp, cam_board, f"orbit {i + 1}")
+        self.go("board_view")
+        return self._finish_handeye(base_tcp, cam_board)
+
+    def _visit(self, T, what):
+        """Move to tool pose T if the robot allows it; False if it is outside the safety limits."""
+        pose = to_pose(T)
+        if not self.c.isPoseWithinSafetyLimits(pose):
+            self.log(f"   {what}: outside safety limits, skipped")
+            return False
+        self.move("moveL", pose, config.SPEED * 3, config.ACC, what)
+        time.sleep(0.3)  # let the arm settle
+        return True
+
+    def _capture_board(self, base_tcp, cam_board, what):
+        T_cb = self.cam.detect_board()
+        if T_cb is None:
+            self.log(f"   {what}: chessboard not found (whole board in view? glare?), skipped")
+            return False
+        base_tcp.append(self.tcp())
+        cam_board.append(T_cb)
+        self.log(f"   {what}: board at {np.linalg.norm(T_cb[:3, 3]) * 100:.0f} cm ({len(base_tcp)} captured)")
+        return True
+
+    def _finish_handeye(self, base_tcp, cam_board):
         if len(base_tcp) < 3:
             raise RuntimeError(f"only {len(base_tcp)} poses - need at least 3 (better 12+), nothing saved")
         tilt = max(np.degrees(np.linalg.norm(cv2.Rodrigues((inv(A) @ B)[:3, :3])[0]))
                    for A in base_tcp for B in base_tcp)
         self.log(f"{len(base_tcp)} poses, largest rotation between two poses {tilt:.0f} deg (want 12+ poses, 40+ deg)")
-        self.X = hand_eye(base_tcp, cam_tag)
+        self.X = hand_eye(base_tcp, cam_board)
         config.DATA.mkdir(parents=True, exist_ok=True)
         np.save(config.DATA / "handeye.npy", self.X)
         # real-data check: the fixed board should land in the same base position from every pose
-        pts = np.array([(B @ self.X @ C)[:3, 3] for B, C in zip(base_tcp, cam_tag)])
+        pts = np.array([(B @ self.X @ C)[:3, 3] for B, C in zip(base_tcp, cam_board)])
         spread = np.linalg.norm(pts - pts.mean(0), axis=1) * 1000
         self.log("per pose error (mm): " + " ".join(f"{s:.0f}" for s in spread))  # one big number = one bad capture
         return spread

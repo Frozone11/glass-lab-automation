@@ -53,8 +53,32 @@ def average(Ts):
     return T
 
 
+def rot(axis, deg):
+    return cv2.Rodrigues(np.asarray(axis, float) / np.linalg.norm(axis) * np.radians(deg))[0]
+
+
+def orbit(cam0, centre, tilt=25, roll=30):
+    """Camera poses (base frame) around a point the camera looks at: same distance, point stays mid-image.
+    8 tilts of `tilt` deg in all directions, each with some roll, plus two pure rolls."""
+    v = centre - cam0[:3, 3]
+    v = v / np.linalg.norm(v)
+    u1 = np.cross(v, [0, 0, 1]) if abs(v[2]) < 0.9 else np.cross(v, [1, 0, 0])
+    u1 /= np.linalg.norm(u1)
+    u2 = np.cross(v, u1)
+    rotations = [rot(np.cos(a) * u1 + np.sin(a) * u2, tilt) @ rot(v, roll * (-1) ** k / 2)
+                 for k, a in enumerate(np.radians(np.arange(0, 360, 45)))]
+    rotations += [rot(v, roll), rot(v, -roll)]
+    poses = []
+    for R in rotations:
+        about = np.eye(4)
+        about[:3, :3], about[:3, 3] = R, centre - R @ centre   # rotate about the centre point
+        poses.append(about @ cam0)
+    return poses
+
+
 BOARD_OBJ = np.zeros((config.BOARD[0] * config.BOARD[1], 3), np.float32)
 BOARD_OBJ[:, :2] = np.mgrid[0:config.BOARD[0], 0:config.BOARD[1]].T.reshape(-1, 2) * config.SQUARE
+BOARD_CENTRE = BOARD_OBJ[:, :2].mean(0)
 
 
 def find_board(gray):

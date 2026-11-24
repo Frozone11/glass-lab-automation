@@ -67,9 +67,12 @@
       <h2>Calibration</h2>
       <div class="row">
         <button class="act" onclick="post('intrinsics')">Camera calibration</button>
-        <button class="act" onclick="post('handeye')">Hand-eye calibration</button>
+        <button class="act" onclick="post('handeye')">Hand-eye (manual)</button>
+        <button class="act" onclick="post('auto_handeye')">Hand-eye (automatic)</button>
       </div>
-      <div class="mute">Both use the chessboard. Redo hand-eye if the camera mount moves.</div>
+      <div class="mute">All use the chessboard. Automatic: board fixed on the MiR, the arm moves by itself from the
+        saved <b>board_view</b> pose (asked for the first time; delete it to set a new one). Redo hand-eye if the
+        camera mount moves.</div>
     </div>
 
     <div class="card">

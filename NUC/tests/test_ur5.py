@@ -163,3 +163,43 @@ def test_refuses_far_offset(setup):
     cam.tag = yaw([0.5, 0, 0], 0) @ cam.tag
     with pytest.raises(RuntimeError, match="from where it was taught"):
         ur.pick("spot")
+
+
+class FakeBoardCam:
+    """Chessboard fixed on the MiR deck; only 'seen' when its centre is within 25 deg of the camera axis."""
+    def __init__(self, robot, X, board):
+        self.robot, self.X, self.board = robot, X, board
+        self.rng = np.random.default_rng(5)
+
+    def detect_board(self):
+        from ur5.vision import BOARD_CENTRE
+        T_cb = inv(self.robot.T @ self.X) @ self.board
+        p = T_cb @ np.array([*BOARD_CENTRE, 0, 1])
+        if p[2] <= 0 or np.degrees(np.arctan2(np.linalg.norm(p[:2]), p[2])) > 25:
+            return None
+        return T_cb @ to_T(list(self.rng.normal(0, 0.0005, 3)) + list(self.rng.normal(0, 0.002, 3)))
+
+
+def test_auto_handeye_recovers_camera_mount(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    rob = FakeRobot()
+    rob.isPoseWithinSafetyLimits = lambda pose: True
+    X = to_T([0.01, 0.07, 0.04, 0.08, -0.05, 0.6])               # true camera mount, unknown to the code
+    board = to_T([0.35, -0.12, 0.0, 0, 0, 0.3])                    # board on the deck
+    cam = FakeBoardCam(rob, X, board)
+    view = to_T([0.45, -0.05, 0.35, np.pi, 0, 0]) @ inv(X)          # first-time view: camera looking down at it
+
+    def user(msg):
+        rob.T = view
+        return "next"
+
+    ur = UR5(rob, rob, rob, cam, user, log=lambda line: None)
+    spread = ur.auto_handeye()
+    assert len(spread) >= 15                                       # start + wiggles + most orbit poses seen
+    assert np.linalg.norm(ur.X[:3, 3] - X[:3, 3]) < 0.003
+    assert np.degrees(np.linalg.norm(cv2.Rodrigues(ur.X[:3, :3].T @ X[:3, :3])[0])) < 0.5
+    assert spread.mean() < 3
+    assert np.allclose(rob.T, view)                                # back at board_view
+    ur.wait = lambda msg: pytest.fail("second run must not ask the user")
+    ur.auto_handeye()

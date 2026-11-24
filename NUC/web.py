@@ -83,8 +83,7 @@ def robot_job(cam, fn):
     return job
 
 
-def handeye(ur):
-    s = ur.calibrate_handeye()
+def report(ur, s):
     ur.log(f"tag position spread: mean {s.mean():.1f} mm, max {s.max():.1f} mm (want < 2-3 mm)")
 
 
@@ -104,7 +103,9 @@ def make_job(cam, action, d):
     if action == "intrinsics":
         return "camera calibration", lambda j: cam.calibrate(j.wait, j.say)
     if action == "handeye":
-        return "hand-eye calibration", robot_job(cam, handeye)
+        return "hand-eye calibration", robot_job(cam, lambda ur: report(ur, ur.calibrate_handeye()))
+    if action == "auto_handeye":
+        return "hand-eye calibration", robot_job(cam, lambda ur: report(ur, ur.auto_handeye()))
     if action == "save_pose":
         return f"save pose {name}", robot_job(cam, lambda ur: (ur.freedrive(f"Move the arm to the '{name}' pose."),
                                                                ur.save_pose(name), ur.log(f"pose '{name}' saved")))
