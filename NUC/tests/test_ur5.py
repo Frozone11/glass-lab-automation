@@ -113,6 +113,20 @@ class FakeCam:
         return inv(self.robot.T @ self.X) @ self.tag
 
 
+class FakeOven:
+    """Stands in for oven.Oven: records door commands in a shared list."""
+    calls = []
+
+    def __init__(self, name):
+        self.name = name
+
+    def open(self, log=print):
+        FakeOven.calls.append(("open", self.name))
+
+    def close(self, log=print):
+        FakeOven.calls.append(("close", self.name))
+
+
 # taught poses for an oven-like target: search, close view, 2 waypoints, approach (12 cm up, 3 mm off), grasp
 SEARCH = to_T([0.45, 0.1, 0.6, np.pi, 0, 0])
 VIEW = to_T([0.5, 0.1, 0.3, np.pi, 0, 0])
@@ -123,7 +137,8 @@ GRASP = to_T([0.8, 0.15, 0.04, np.pi, 0, 0])
 
 
 def teach_user(rob, steps):
-    """Fake user: for each prompt, jog to the next pose (or None = press Done without moving)."""
+    """Fake user: for each prompt, jog to the next pose; None = press Done without moving.
+    Prompt order in teach: search, close view, waypoints..., Done, approach, grasp."""
     steps = iter(steps)
 
     def user(msg):
@@ -142,11 +157,15 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
     rob = FakeRobot()
     X = to_T([0.0, 0.06, 0.03, 0.05, -0.03, 0.02])          # camera slightly off the tool axis
-    cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag on the oven front
+    monkeypatch.setattr("ur5.arm.Oven", FakeOven)
+    FakeOven.calls = []
+    cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag on the oven door
     ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, OUT, ENTRANCE, None, APPROACH, GRASP]),
              log=lambda line: None)
     ur.X = X
-    ur.teach("oven1", 0)
+    ur.teach("oven1", 0, oven="oven1")
+    assert FakeOven.calls == [("open", "oven1")]           # opened right after the close view, left open
+    FakeOven.calls = []
     return ur, rob, cam
 
 
@@ -155,7 +174,11 @@ def test_pick_follows_moved_tag_through_waypoints(setup):
     M = yaw([0.08, -0.12, 0], 6)                           # MiR came back 14 cm and 6 deg off
     cam.tag = M @ cam.tag
     rob.moves.clear()
+    events = []
+    rob.moveL = lambda p, *a: (events.append("move"), rob.moves.append(to_T(p)), setattr(rob, "T", to_T(p)), True)[3]
+    FakeOven.calls = events                                 # door commands land in the same timeline
     ur.pick("oven1")
+    assert events == ["move", ("open", "oven1")] + ["move"] * 7 + [("close", "oven1")]  # look, open, in+out, close
     view, out, entrance, pre, at, back, entrance2, out2 = rob.moves
     for got, taught in ((view, VIEW), (out, OUT), (entrance, ENTRANCE), (at, GRASP)):
         assert np.allclose(got, M @ taught, atol=1e-6)

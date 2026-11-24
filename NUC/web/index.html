@@ -31,6 +31,7 @@
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
   input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; width:9em; }
   input.num { width:4.5em; }
+  select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; background:#fff; }
   table { width:100%; border-collapse:collapse; }
   td { padding:6px 4px; border-top:1px solid var(--line); }
   td:last-child { text-align:right; white-space:nowrap; }
@@ -80,11 +81,19 @@
       <div class="row">
         <input id="t-name" placeholder="name, e.g. oven1">
         <input id="t-tag" class="num" type="number" min="0" max="49" placeholder="tag">
-        <button class="act" onclick="post('teach',{name:val('t-name'),tag:+val('t-tag')})">Teach</button>
+        <select id="t-oven" title="oven whose door opens after the close view"><option value="">no oven</option></select>
+        <button class="act" onclick="post('teach',{name:val('t-name'),tag:+val('t-tag'),oven:$('t-oven').value})">Teach</button>
       </div>
-      <div class="mute">Teach asks for: search pose, close view, waypoints on the way in (as many as you like, Done when
+      <div class="mute">With an oven picked, the robot measures the tag with the door closed, then opens the door,
+        and Pick/Place close it again at the end. Teach asks for: search pose, close view, waypoints on the way in (as many as you like, Done when
         finished), approach straight above the spot, grasp. Pick/Place drive the same path in and back out.</div>
       <table id="targets"></table>
+    </div>
+
+    <div class="card">
+      <h2>Ovens</h2>
+      <table id="ovens"></table>
+      <div class="mute">Make sure the arm is out of the oven before closing a door.</div>
     </div>
 
     <div class="card">
@@ -140,11 +149,21 @@ async function refresh() {
   document.querySelectorAll('button.act').forEach(b => b.disabled = !!s.job);
 
   $('targets').innerHTML = s.targets.length ? s.targets.map(t =>
-    `<tr><td><b>${esc(t.name)}</b> <span class="mute">tag ${t.tag}</span></td>
+    `<tr><td><b>${esc(t.name)}</b> <span class="mute">tag ${t.tag}${t.oven ? ' · ' + esc(t.oven) : ''}</span></td>
      <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('pick',{name:'${esc(t.name)}'})">Pick</button>
          <button class="act" ${s.job ? 'disabled' : ''} onclick="post('place',{name:'${esc(t.name)}'})">Place</button>
          <button class="act" ${s.job ? 'disabled' : ''} title="Delete" onclick="del('targets','${esc(t.name)}')">✕</button></td></tr>`
   ).join('') : '<tr><td class="mute">No targets yet - teach one above.</td></tr>';
+  $('ovens').innerHTML = s.ovens.map(o =>
+    `<tr><td><b>${esc(o.name)}</b> <span class="mute">door ${esc(o.door)}</span></td>
+     <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('door',{oven:'${esc(o.name)}',open:true})">Open</button>
+         <button class="act" ${s.job ? 'disabled' : ''} onclick="post('door',{oven:'${esc(o.name)}',open:false})">Close</button></td></tr>`
+  ).join('') || '<tr><td class="mute">No ovens in config.py</td></tr>';
+  const sel = $('t-oven'), names = s.ovens.map(o => o.name).join();
+  if (sel.dataset.names !== names) {
+    sel.dataset.names = names;
+    sel.innerHTML = '<option value="">no oven</option>' + s.ovens.map(o => `<option>${esc(o.name)}</option>`).join('');
+  }
   $('poses').innerHTML = 'Saved poses: ' + (s.poses.length ? s.poses.map(p =>
     `${esc(p)} <button class="act" ${s.job ? 'disabled' : ''} title="Delete" onclick="del('poses','${esc(p)}')">✕</button>`
   ).join(' ') : 'none');

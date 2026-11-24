@@ -16,10 +16,12 @@ import cv2
 import numpy as np
 
 import config
+from oven import Oven
 from ur5.arm import UR5, load, save
 from ur5.vision import DICT, Camera
 
 PAGE = Path(__file__).parent / "web" / "index.html"
+OVEN_STATE = {name: "unknown" for name in config.OVENS}   # kept fresh by watch_ovens()
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
 
 
@@ -68,6 +70,11 @@ class Jobs:
             self.answer("stop")
         if self.ur is not None:
             self.ur.c.stopScript()  # halts a running move; the move then fails and the job ends
+        for name in config.OVENS:   # and any moving oven door
+            try:
+                Oven(name).stop()
+            except Exception as e:
+                self.say(f"   {name}: could not stop ({e})")
 
 
 def robot_job(cam, fn):
@@ -113,7 +120,18 @@ def make_job(cam, action, d):
         tag = int(d.get("tag", -1))
         if not 0 <= tag < 50:
             raise ValueError("tag: 0-49")
-        return f"teach {name}", robot_job(cam, lambda ur: (ur.teach(name, tag), ur.log(f"target '{name}' saved")))
+        oven = d.get("oven") or None
+        if oven is not None and oven not in config.OVENS:
+            raise ValueError(f"unknown oven '{oven}'")
+        return f"teach {name}", robot_job(cam, lambda ur: (ur.teach(name, tag, oven),
+                                                           ur.log(f"target '{name}' saved")))
+    if action == "door":
+        oven = str(d.get("oven", ""))
+        if oven not in config.OVENS:
+            raise ValueError(f"unknown oven '{oven}'")
+        opening = bool(d.get("open"))
+        return (f"{oven} door {'open' if opening else 'close'}",
+                lambda j: Oven(oven).open(j.say) if opening else Oven(oven).close(j.say))
     if action in ("pick", "place"):
         return f"{action} {name}", robot_job(cam, lambda ur: pick_or_place(ur, action, name))
     if action == "grip":
@@ -160,8 +178,20 @@ def status(cam, jobs):
         "intrinsics": cam.calib_error or "ok",
         "handeye": "ok" if (config.DATA / "handeye.npy").exists() else "not done",
         "poses": sorted(load("poses")),
-        "targets": [{"name": k, "tag": v["tag"]} for k, v in sorted(load("targets").items())],
+        "targets": [{"name": k, "tag": UR5.tag(v), "oven": v.get("oven")} for k, v in sorted(load("targets").items())],
+        "ovens": [{"name": k, "door": v} for k, v in sorted(OVEN_STATE.items())],
     }
+
+
+def watch_ovens():
+    """Poll every oven's door state in the background, so the page never waits on an ESP32."""
+    while True:
+        for name in config.OVENS:
+            try:
+                OVEN_STATE[name] = Oven(name).door(timeout=1) or "unknown"
+            except Exception:
+                OVEN_STATE[name] = "not reachable"
+        time.sleep(2)
 
 
 def make_server(cam, jobs, port=config.WEB_PORT):
@@ -232,6 +262,7 @@ def make_server(cam, jobs, port=config.WEB_PORT):
 
 
 if __name__ == "__main__":
+    threading.Thread(target=watch_ovens, daemon=True).start()
     srv = make_server(Camera(), Jobs())
     print(f"GlasLab control page on http://localhost:{srv.server_address[1]}")
     srv.serve_forever()

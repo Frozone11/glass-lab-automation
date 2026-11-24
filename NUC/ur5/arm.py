@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 import config
+from oven import Oven
 from ur5.vision import BOARD_CENTRE, board_pose_from_corners, hand_eye, inv, orbit, refine_handeye, to_pose, to_T
 
 
@@ -168,15 +169,19 @@ class UR5:
         return spread
 
     # ---- tag-relative targets ----
-    def teach(self, name, tag_id):
+    def teach(self, name, tag_id, oven=None):
         """Search pose, close view, any number of waypoints on the way in (e.g. 'out a bit', 'oven entrance'),
         the pick/place approach straight above the spot, and the grasp pose. All but the search pose are stored
-        relative to the tag, so they follow the tag wherever the MiR parks."""
+        relative to the tag, so they follow it. oven: name in config.OVENS whose door opens after the close view
+        (the tag may sit on that door: it is only measured while the door is closed)."""
         self.freedrive("SEARCH pose: camera ~50-60 cm from the tag, tag in the middle of the image.")
         q_search = list(self.r.getActualQ())
         self.locate(tag_id)  # check the tag is visible from here
-        self.freedrive("CLOSE view: camera ~30 cm from the tag, roughly straight on.")
+        self.freedrive("CLOSE view: camera ~20-30 cm from the tag, roughly straight on." +
+                       (" The door must be closed." if oven else ""))
         T_bt = self.locate(tag_id)
+        if oven:
+            Oven(oven).open(self.log)
         rel = lambda: (inv(T_bt) @ self.tcp()).tolist()
         tag_view, path = rel(), []
         while self.freedrive(f"WAYPOINT {len(path) + 1} on the way in (e.g. out from the MiR, then the oven entrance). "
@@ -194,27 +199,38 @@ class UR5:
         if sideways > 5:
             self.log(f"   note: approach was {sideways:.0f} mm off to the side - it will go straight down instead")
         targets = load("targets")
-        targets[name] = {"tag": tag_id, "q_search": q_search, "base_tag": T_bt.tolist(), "tag_view": tag_view,
-                         "path": path, "approach_height": float(height), "tag_grasp": rel()}
+        targets[name] = {"tag": tag_id, "oven": oven, "q_search": q_search, "base_tag": T_bt.tolist(),
+                         "tag_view": tag_view, "path": path, "approach_height": float(height), "tag_grasp": rel()}
         save("targets", targets)
         self.log(f"   {len(path)} waypoints, approach {height * 100:.1f} cm above the grasp pose")
+        if oven:
+            self.log(f"   {oven} door left open - jog the arm out before closing it")
+
+    @staticmethod
+    def tag(t):
+        return t["tag"] if "tag" in t else t["tags"][0]  # targets taught with the old multi-tag version
 
     def find(self, name):
         """Search from far, refine from the taught close view; returns the tag pose in the base frame."""
         t = load("targets")[name]
+        tag = self.tag(t)
         self.move("moveJ", t["q_search"], config.JSPEED, config.JACC, "search pose")
-        T_bt = self.locate(t["tag"])                                    # coarse, wide view
+        T_bt = self.locate(tag)                                         # coarse, wide view
         off = np.linalg.norm(T_bt[:3, 3] - np.array(t["base_tag"])[:3, 3])
         if off > config.MAX_OFFSET:
-            raise RuntimeError(f"tag {t['tag']} is {off * 100:.0f} cm from where it was taught - not moving")
-        self.log(f"   tag {t['tag']} found, {off * 100:.1f} cm from where it was taught")
+            raise RuntimeError(f"tag {tag} is {off * 100:.0f} cm from where it was taught - not moving")
+        self.log(f"   tag {tag} found, {off * 100:.1f} cm from where it was taught")
         self.move("moveL", to_pose(T_bt @ np.array(t["tag_view"])), config.SPEED * 3, config.ACC, "close view")
-        return self.locate(t["tag"])                                    # fine, same view as when taught
+        return self.locate(tag)                                         # fine, same view as when taught
 
     def _run(self, name, action):
-        """close view -> waypoints -> approach -> straight down -> action -> straight up -> waypoints backwards."""
+        """close view -> (open door) -> waypoints -> approach -> straight down -> action -> straight up ->
+        waypoints backwards -> (close door)."""
         t = load("targets")[name]
-        T_bt = self.find(name)
+        T_bt = self.find(name)  # with a door: measured while it is still closed
+        oven = Oven(t["oven"]) if t.get("oven") else None
+        if oven:
+            oven.open(self.log)
         path = [T_bt @ np.array(P) for P in t.get("path", [])]
         grasp = T_bt @ np.array(t["tag_grasp"])
         pre = grasp.copy()
@@ -227,6 +243,8 @@ class UR5:
         self.move("moveL", to_pose(pre), config.SPEED, config.ACC, "back up")
         for i, P in reversed(list(enumerate(path))):
             self.move("moveL", to_pose(P), config.SPEED * 3, config.ACC, f"waypoint {i + 1}")
+        if oven:
+            oven.close(self.log)
 
     def pick(self, name):
         self.gripper(close=False)

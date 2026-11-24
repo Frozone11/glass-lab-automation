@@ -14,6 +14,11 @@ import web
 from ur5.vision import DICT
 
 
+@pytest.fixture(autouse=True)
+def no_ovens(monkeypatch):
+    monkeypatch.setattr(config, "OVENS", {})  # STOP would otherwise try to reach the real oven ESP32
+
+
 def wait_until(cond, timeout=3):
     end = time.time() + timeout
     while time.time() < end:
@@ -117,6 +122,8 @@ def test_bad_requests_rejected(server):
     url, _ = server
     assert post(url + "/api/teach", {"name": "bad name!", "tag": 1})[0] == 400
     assert post(url + "/api/teach", {"name": "oven1", "tag": 99})[0] == 400
+    assert post(url + "/api/teach", {"name": "oven1", "tag": 1, "oven": "nope"})[0] == 400
+    assert post(url + "/api/door", {"oven": "nope", "open": True})[0] == 400
     assert post(url + "/api/pick", {"name": "nothere"})[0] == 400
     assert post(url + "/api/home")[0] == 400          # no home pose saved yet
     assert post(url + "/api/answer", {"key": "x"})[0] == 400
@@ -142,6 +149,6 @@ def test_delete_target_and_pose(server):
     assert post(url + "/api/delete", {"kind": "targets", "name": "spot"}) == (200, {"ok": True})
     assert post(url + "/api/delete", {"kind": "poses", "name": "home"}) == (200, {"ok": True})
     s = json.loads(get(url + "/status")[1])
-    assert s["targets"] == [{"name": "oven1", "tag": 1}] and s["poses"] == []
+    assert s["targets"] == [{"name": "oven1", "tag": 1, "oven": None}] and s["poses"] == []
     assert post(url + "/api/delete", {"kind": "targets", "name": "spot"})[0] == 400   # already gone
     assert post(url + "/api/delete", {"kind": "../etc", "name": "x"})[0] == 400

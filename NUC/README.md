@@ -5,6 +5,7 @@ all from a web page.
 
 ```
 web.py           web server: control page, live camera, jobs (python web.py)
+oven.py          oven door open/close through the oven's ESP32 (HTTP, same firmware/API as MVP2), waits for the door
 web/index.html   the control page
 config.py        all settings (IPs, camera, tag size, gripper outputs, speeds, port)
 ur5/vision.py    camera, ArUco/chessboard detection, transform math, hand-eye solver
@@ -20,7 +21,8 @@ uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements.txt
 python -m pytest
 ```
-Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` and `SQUARE` (measured), `GRIP_OPEN_DO` / `GRIP_CLOSE_DO`.
+Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` and `SQUARE` (measured), `GRIP_OPEN_DO` / `GRIP_CLOSE_DO`,
+and `OVENS` (each oven's ESP32 IP and API key, the same as `OVEN_HOST` / `OVEN_KEY` in MVP2).
 
 ## Use
 `python web.py`, then open http://localhost:8000 on the NUC, or http://<NUC-IP>:8000 from another computer
@@ -30,8 +32,9 @@ on the same network. When a step needs you, the page shows what to do: move the 
 1. Camera calibration - chessboard, ~20 captures (error < 0.5 px)
 2. Hand-eye calibration - chessboard fixed, 12+ tilted poses (spread < 2-3 mm)
 3. Save pose `home` - tucked in over the platform
-4. Teach a target (e.g. `oven1`, tag 1) - search pose, close view, waypoints on the way in (e.g. out from the
-   MiR, oven entrance; Done when finished), approach straight above the spot, grasp pose
+4. Teach a target (e.g. `oven1`, tag 1 on the oven door, oven `oven1`) - search pose, close view (door closed),
+   the door opens, waypoints on the way in (e.g. out from the MiR, oven entrance; Done when finished), approach
+   straight above the spot, grasp pose. Pick/Place then: look at the closed door, open it, go in, come out, close it.
 5. Pick / Place
 
 ## Run on boot
@@ -40,6 +43,10 @@ sudo cp glaslab.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now glaslab
 ```
+The door state is stored by the ESP32, not measured. If a door move is interrupted (STOP also stops the door), the
+state becomes `unknown`: bring the door back to fully closed with the raw stepper controls at
+`http://<ESP32 IP>/debug` before running again.
+
 Logs: `journalctl -u glaslab -f`. After a `git pull`: `sudo systemctl restart glaslab`.
 The service assumes user `robotlab` and the repo in `~/glass-lab-automation`; edit the paths in
 `glaslab.service` if that differs.
