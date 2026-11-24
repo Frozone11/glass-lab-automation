@@ -57,16 +57,17 @@ def rot(axis, deg):
     return cv2.Rodrigues(np.asarray(axis, float) / np.linalg.norm(axis) * np.radians(deg))[0]
 
 
-def orbit(cam0, centre, tilt=25, roll=30):
+def orbit(cam0, centre, tilts=(25, 12), roll=30):
     """Camera poses (base frame) around a point the camera looks at: same distance, point stays mid-image.
-    8 tilts of `tilt` deg in all directions, each with some roll, plus two pure rolls."""
+    Per tilt ring 8 directions (each with some roll, rings offset by 22.5 deg), plus two pure rolls."""
     v = centre - cam0[:3, 3]
     v = v / np.linalg.norm(v)
     u1 = np.cross(v, [0, 0, 1]) if abs(v[2]) < 0.9 else np.cross(v, [1, 0, 0])
     u1 /= np.linalg.norm(u1)
     u2 = np.cross(v, u1)
     rotations = [rot(np.cos(a) * u1 + np.sin(a) * u2, tilt) @ rot(v, roll * (-1) ** k / 2)
-                 for k, a in enumerate(np.radians(np.arange(0, 360, 45)))]
+                 for ring, tilt in enumerate(tilts)
+                 for k, a in enumerate(np.radians(np.arange(0, 360, 45) + 22.5 * ring))]
     rotations += [rot(v, roll), rot(v, -roll)]
     poses = []
     for R in rotations:
@@ -94,6 +95,48 @@ def board_pose(img, K, dist):
         return None
     ok, r, t = cv2.solvePnP(BOARD_OBJ, corners, K, dist)
     return to_T(list(t.ravel()) + list(r.ravel())) if ok else None
+
+
+def refine_handeye(base_tcp, corners, X, K, dist, iters=30):
+    """Polish X = T_tcp_cam using the raw chessboard corners of every pose: fit X and the board's (fixed) pose in
+    the base frame together so the predicted corners land on the detected ones (Levenberg-Marquardt).
+    Returns X, T_base_board and the remaining error in pixels per corner."""
+    W = average([B @ X @ board_pose_from_corners(c, K, dist) for B, c in zip(base_tcp, corners)])
+    measured = np.concatenate([c.reshape(-1, 2) for c in corners]).ravel()
+
+    def delta(p):  # small pose change, applied on the right of the starting guess
+        D = np.eye(4)
+        D[:3, :3], D[:3, 3] = cv2.Rodrigues(p[:3])[0], p[3:]
+        return D
+
+    def residuals(p):
+        X_, W_ = X @ delta(p[:6]), W @ delta(p[6:])
+        out = []
+        for B in base_tcp:
+            C = inv(B @ X_) @ W_
+            out.append(cv2.projectPoints(BOARD_OBJ, cv2.Rodrigues(C[:3, :3])[0], C[:3, 3], K, dist)[0].ravel())
+        return np.concatenate(out) - measured
+
+    p, lam = np.zeros(12), 1e-3
+    r = residuals(p)
+    for _ in range(iters):
+        J = np.stack([(residuals(p + e) - r) / 1e-7 for e in np.eye(12) * 1e-7], axis=1)
+        H, g = J.T @ J, J.T @ r
+        while lam < 1e10:
+            step = np.linalg.solve(H + lam * np.diag(np.diag(H)), -g)
+            r_new = residuals(p + step)
+            if r_new @ r_new < r @ r:
+                p, r, lam = p + step, r_new, lam / 3
+                break
+            lam *= 5
+        if lam >= 1e10 or np.abs(step).max() < 1e-9:
+            break
+    return X @ delta(p[:6]), W @ delta(p[6:]), float(np.sqrt(r @ r / (len(r) / 2)))
+
+
+def board_pose_from_corners(corners, K, dist):
+    ok, r, t = cv2.solvePnP(BOARD_OBJ, corners, K, dist)
+    return to_T(list(t.ravel()) + list(r.ravel()))
 
 
 def tag_pose(img, K, dist, tag_id):
@@ -170,9 +213,20 @@ class Camera:
         """Average T_cam_tag over several frames, or None. The robot must stand still."""
         return self._average_pose(lambda img: tag_pose(img, self.K, self.dist, tag_id), frames)
 
-    def detect_board(self, frames=5):
-        """Average T_cam_board over several frames, or None. The robot must stand still."""
-        return self._average_pose(lambda img: board_pose(img, self.K, self.dist), frames)
+    def board_corners(self, frames=8):
+        """Chessboard corners averaged over several frames (N x 1 x 2), or None. The robot must stand still."""
+        if err := self.calib_error:
+            raise RuntimeError(err)
+        self.fresh()  # skip a frame that may have been exposed while the arm was still settling
+        found = []
+        for _ in range(frames * 2):
+            img = self.fresh()
+            c = find_board(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)) if img is not None else None
+            if c is not None:
+                found.append(c)
+            if len(found) == frames:
+                break
+        return np.mean(found, axis=0).astype(np.float32) if len(found) >= frames // 2 else None
 
     def _average_pose(self, pose_fn, frames):
         if err := self.calib_error:

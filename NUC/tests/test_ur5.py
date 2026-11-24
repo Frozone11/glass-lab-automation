@@ -166,18 +166,23 @@ def test_refuses_far_offset(setup):
 
 
 class FakeBoardCam:
-    """Chessboard fixed on the MiR deck; only 'seen' when its centre is within 25 deg of the camera axis."""
+    """Chessboard fixed on the MiR deck, seen by a 1280x720 camera with 0.3 px corner noise."""
+    K = np.array([[900, 0, 640], [0, 900, 360], [0, 0, 1]], float)
+    dist = np.zeros(5)
+
     def __init__(self, robot, X, board):
         self.robot, self.X, self.board = robot, X, board
         self.rng = np.random.default_rng(5)
 
-    def detect_board(self):
-        from ur5.vision import BOARD_CENTRE
-        T_cb = inv(self.robot.T @ self.X) @ self.board
-        p = T_cb @ np.array([*BOARD_CENTRE, 0, 1])
-        if p[2] <= 0 or np.degrees(np.arctan2(np.linalg.norm(p[:2]), p[2])) > 25:
+    def board_corners(self):
+        from ur5.vision import BOARD_OBJ
+        C = inv(self.robot.T @ self.X) @ self.board
+        if (C[:3, :3] @ BOARD_OBJ.T + C[:3, 3:4])[2].min() <= 0.05:
             return None
-        return T_cb @ to_T(list(self.rng.normal(0, 0.0005, 3)) + list(self.rng.normal(0, 0.002, 3)))
+        px = cv2.projectPoints(BOARD_OBJ, cv2.Rodrigues(C[:3, :3])[0], C[:3, 3], self.K, self.dist)[0]
+        if px[..., 0].min() < 0 or px[..., 0].max() > 1280 or px[..., 1].min() < 0 or px[..., 1].max() > 720:
+            return None  # board not fully in the image
+        return (px + self.rng.normal(0, 0.3, px.shape)).astype(np.float32)
 
 
 def test_auto_handeye_recovers_camera_mount(tmp_path, monkeypatch):
@@ -196,10 +201,39 @@ def test_auto_handeye_recovers_camera_mount(tmp_path, monkeypatch):
 
     ur = UR5(rob, rob, rob, cam, user, log=lambda line: None)
     spread = ur.auto_handeye()
-    assert len(spread) >= 15                                       # start + wiggles + most orbit poses seen
-    assert np.linalg.norm(ur.X[:3, 3] - X[:3, 3]) < 0.003
-    assert np.degrees(np.linalg.norm(cv2.Rodrigues(ur.X[:3, :3].T @ X[:3, :3])[0])) < 0.5
-    assert spread.mean() < 3
+    assert len(spread) >= 20                                       # start + wiggles + most orbit poses seen
+    assert np.linalg.norm(ur.X[:3, 3] - X[:3, 3]) < 0.001
+    assert np.degrees(np.linalg.norm(cv2.Rodrigues(ur.X[:3, :3].T @ X[:3, :3])[0])) < 0.1
     assert np.allclose(rob.T, view)                                # back at board_view
     ur.wait = lambda msg: pytest.fail("second run must not ask the user")
     ur.auto_handeye()
+
+
+def test_refinement_beats_pose_averaging():
+    """Same noisy corners: the corner-based refinement must land closer to the true mount than hand_eye alone."""
+    from ur5.vision import BOARD_OBJ, board_pose_from_corners, refine_handeye
+    rng = np.random.default_rng(2)
+    K, dist = FakeBoardCam.K, np.zeros(5)
+    X = to_T([0.01, 0.07, 0.04, 0.08, -0.05, 0.6])
+    board = to_T([0.35, -0.12, 0.0, 0, 0, 0.3])
+    centre = board[:3, 3] + board[:3, :3] @ np.r_[BOARD_OBJ[:, :2].mean(0), 0]
+    errs_plain, errs_refined = [], []
+    for _ in range(5):
+        Bs, corners = [], []
+        for _ in range(15):
+            # camera looking at the board centre from ~35 cm, random tilt/roll
+            cam = to_T(list(centre + [0, 0, 0.35]) + [np.pi, 0, 0])
+            T = np.eye(4)
+            T[:3, :3] = cv2.Rodrigues(rng.normal(0, 0.3, 3))[0]
+            T[:3, 3] = centre - T[:3, :3] @ centre
+            cam = T @ cam
+            C = inv(cam) @ board
+            px = cv2.projectPoints(BOARD_OBJ, cv2.Rodrigues(C[:3, :3])[0], C[:3, 3], K, dist)[0]
+            Bs.append(cam @ inv(X))
+            corners.append((px + rng.normal(0, 0.3, px.shape)).astype(np.float32))
+        X0 = hand_eye(Bs, [board_pose_from_corners(c, K, dist) for c in corners])
+        X1, W, rms = refine_handeye(Bs, corners, X0, K, dist)
+        errs_plain.append(np.linalg.norm(X0[:3, 3] - X[:3, 3]))
+        errs_refined.append(np.linalg.norm(X1[:3, 3] - X[:3, 3]))
+        assert np.linalg.norm(W[:3, 3] - board[:3, 3]) < 0.002 and rms < 0.5
+    assert np.mean(errs_refined) < np.mean(errs_plain)
