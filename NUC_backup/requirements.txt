@@ -1,4 +1,0 @@
-ur_rtde
-opencv-python>=4.7
-numpy
-pytest

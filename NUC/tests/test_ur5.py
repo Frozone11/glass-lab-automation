@@ -113,6 +113,28 @@ class FakeCam:
         return inv(self.robot.T @ self.X) @ self.tag
 
 
+# taught poses for an oven-like target: search, close view, 2 waypoints, approach (12 cm up, 3 mm off), grasp
+SEARCH = to_T([0.45, 0.1, 0.6, np.pi, 0, 0])
+VIEW = to_T([0.5, 0.1, 0.3, np.pi, 0, 0])
+OUT = to_T([0.55, 0.0, 0.35, np.pi, 0, 0])
+ENTRANCE = to_T([0.7, 0.15, 0.2, np.pi, 0, 0])
+APPROACH = to_T([0.803, 0.15, 0.16, np.pi, 0, 0])
+GRASP = to_T([0.8, 0.15, 0.04, np.pi, 0, 0])
+
+
+def teach_user(rob, steps):
+    """Fake user: for each prompt, jog to the next pose (or None = press Done without moving)."""
+    steps = iter(steps)
+
+    def user(msg):
+        T = next(steps)
+        if T is None:
+            return "done"
+        rob.T = T
+        return "next"
+    return user
+
+
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
@@ -120,49 +142,70 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
     rob = FakeRobot()
     X = to_T([0.0, 0.06, 0.03, 0.05, -0.03, 0.02])          # camera slightly off the tool axis
-    cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag flat on the table
-    search = to_T([0.45, 0.1, 0.6, np.pi, 0, 0])
-    view = to_T([0.5, 0.1, 0.3, np.pi, 0, 0])
-    grasp = to_T([0.5, 0.15, 0.04, np.pi, 0, 0])
-    poses = iter([search, view, grasp])
-
-    def user(msg):  # the "user" jogs the arm to the next pose and clicks Continue
-        rob.T = next(poses)
-        return "next"
-
-    ur = UR5(rob, rob, rob, cam, user, log=lambda line: None)
+    cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag on the oven front
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, OUT, ENTRANCE, None, APPROACH, GRASP]),
+             log=lambda line: None)
     ur.X = X
-    ur.teach("spot", 0)
-    return ur, rob, cam, grasp
+    ur.teach("oven1", 0)
+    return ur, rob, cam
 
 
-def test_pick_follows_moved_tag(setup):
-    ur, rob, cam, grasp = setup
+def test_pick_follows_moved_tag_through_waypoints(setup):
+    ur, rob, cam = setup
     M = yaw([0.08, -0.12, 0], 6)                           # MiR came back 14 cm and 6 deg off
     cam.tag = M @ cam.tag
-    ur.pick("spot")
-    expected = M @ grasp
-    pre, at, back = rob.moves[-3:]
-    assert np.linalg.norm(at[:3, 3] - expected[:3, 3]) < 1e-6
-    assert np.allclose(at[:3, :3], expected[:3, :3], atol=1e-6)
-    assert np.allclose(pre[:3, 3] - at[:3, 3], [0, 0, config.APPROACH])   # straight above
-    assert np.allclose(pre[:3, :3], at[:3, :3])                           # same orientation on the way down
-    assert np.allclose(back, pre)
+    rob.moves.clear()
+    ur.pick("oven1")
+    view, out, entrance, pre, at, back, entrance2, out2 = rob.moves
+    for got, taught in ((view, VIEW), (out, OUT), (entrance, ENTRANCE), (at, GRASP)):
+        assert np.allclose(got, M @ taught, atol=1e-6)
+    assert np.allclose(pre[:3, 3] - at[:3, 3], [0, 0, 0.12])  # straight above, taught height (side offset dropped)
+    assert np.allclose(pre[:3, :3], at[:3, :3])               # same orientation on the way down
+    assert np.allclose(back, pre) and np.allclose(entrance2, entrance) and np.allclose(out2, out)
     assert rob.do == {config.GRIP_OPEN_DO: False, config.GRIP_CLOSE_DO: True}
 
 
+def test_target_without_waypoints(tmp_path, monkeypatch):
+    """A simple table spot: Done straight away at the waypoint step."""
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    monkeypatch.setattr(config, "GRIP_TIME", 0)
+    monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    rob = FakeRobot()
+    X = to_T([0.0, 0.06, 0.03, 0, 0, 0])
+    cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, None, APPROACH, GRASP]), log=lambda line: None)
+    ur.X = X
+    ur.teach("spot", 0)
+    rob.moves.clear()
+    ur.place("spot")
+    assert len(rob.moves) == 4                              # close view, approach, grasp, back up
+    assert rob.do == {config.GRIP_OPEN_DO: True, config.GRIP_CLOSE_DO: False}
+
+
+def test_approach_below_grasp_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    rob = FakeRobot()
+    cam = FakeCam(rob, np.eye(4), yaw([0.5, 0.1, 0.0], 0))
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, None, GRASP, APPROACH]), log=lambda line: None)
+    ur.X = np.eye(4)
+    with pytest.raises(RuntimeError, match="above the grasp"):
+        ur.teach("bad", 0)
+    assert not (tmp_path / "targets.json").exists()
+
+
 def test_refused_move_raises(setup):
-    ur, rob, cam, _ = setup
+    ur, rob, cam = setup
     rob.moveJ = lambda *a: False  # what ur_rtde does in protective stop etc.
     with pytest.raises(RuntimeError, match="refused"):
-        ur.pick("spot")
+        ur.pick("oven1")
 
 
 def test_refuses_far_offset(setup):
-    ur, rob, cam, _ = setup
+    ur, rob, cam = setup
     cam.tag = yaw([0.5, 0, 0], 0) @ cam.tag
     with pytest.raises(RuntimeError, match="from where it was taught"):
-        ur.pick("spot")
+        ur.pick("oven1")
 
 
 class FakeBoardCam:

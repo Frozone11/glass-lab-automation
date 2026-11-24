@@ -169,20 +169,38 @@ class UR5:
 
     # ---- tag-relative targets ----
     def teach(self, name, tag_id):
-        self.freedrive("1/3 SEARCH pose: camera ~50-60 cm from the tag, tag in the middle of the image.")
+        """Search pose, close view, any number of waypoints on the way in (e.g. 'out a bit', 'oven entrance'),
+        the pick/place approach straight above the spot, and the grasp pose. All but the search pose are stored
+        relative to the tag, so they follow the tag wherever the MiR parks."""
+        self.freedrive("SEARCH pose: camera ~50-60 cm from the tag, tag in the middle of the image.")
         q_search = list(self.r.getActualQ())
         self.locate(tag_id)  # check the tag is visible from here
-        self.freedrive("2/3 CLOSE view: camera ~30 cm from the tag, roughly straight on.")
+        self.freedrive("CLOSE view: camera ~30 cm from the tag, roughly straight on.")
         T_bt = self.locate(tag_id)
-        T_tag_view = inv(T_bt) @ self.tcp()
-        self.freedrive("3/3 GRASP pose: gripper exactly around the crucible, come down from above.")
+        rel = lambda: (inv(T_bt) @ self.tcp()).tolist()
+        tag_view, path = rel(), []
+        while self.freedrive(f"WAYPOINT {len(path) + 1} on the way in (e.g. out from the MiR, then the oven entrance). "
+                             f"Continue = save this point, Done = no more waypoints (doesn't save).") != "done":
+            path.append(rel())
+            self.log(f"   waypoint {len(path)} saved")
+        self.freedrive("Pick/place APPROACH: straight above the crucible spot, gripper in its final orientation.")
+        T_app = self.tcp()
+        self.freedrive("GRASP pose: lower straight down onto the crucible spot.")
+        T_grasp = self.tcp()
+        height = T_app[2, 3] - T_grasp[2, 3]
+        sideways = np.linalg.norm(T_app[:2, 3] - T_grasp[:2, 3]) * 1000
+        if height < 0.005:
+            raise RuntimeError("the approach must be above the grasp pose - nothing saved")
+        if sideways > 5:
+            self.log(f"   note: approach was {sideways:.0f} mm off to the side - it will go straight down instead")
         targets = load("targets")
-        targets[name] = {"tag": tag_id, "q_search": q_search, "base_tag": T_bt.tolist(),
-                         "tag_view": T_tag_view.tolist(), "tag_grasp": (inv(T_bt) @ self.tcp()).tolist()}
+        targets[name] = {"tag": tag_id, "q_search": q_search, "base_tag": T_bt.tolist(), "tag_view": tag_view,
+                         "path": path, "approach_height": float(height), "tag_grasp": rel()}
         save("targets", targets)
+        self.log(f"   {len(path)} waypoints, approach {height * 100:.1f} cm above the grasp pose")
 
     def find(self, name):
-        """Search from far, refine from the taught close view, return T_base_grasp."""
+        """Search from far, refine from the taught close view; returns the tag pose in the base frame."""
         t = load("targets")[name]
         self.move("moveJ", t["q_search"], config.JSPEED, config.JACC, "search pose")
         T_bt = self.locate(t["tag"])                                    # coarse, wide view
@@ -191,20 +209,28 @@ class UR5:
             raise RuntimeError(f"tag {t['tag']} is {off * 100:.0f} cm from where it was taught - not moving")
         self.log(f"   tag {t['tag']} found, {off * 100:.1f} cm from where it was taught")
         self.move("moveL", to_pose(T_bt @ np.array(t["tag_view"])), config.SPEED * 3, config.ACC, "close view")
-        T_bt = self.locate(t["tag"])                                    # fine, same view as when taught
-        return T_bt @ np.array(t["tag_grasp"])
+        return self.locate(t["tag"])                                    # fine, same view as when taught
 
-    def _in_out(self, T, action):
-        pre = T.copy()
-        pre[2, 3] += config.APPROACH  # straight above in the robot base frame: the gripper is made to come down vertically
-        self.move("moveL", to_pose(pre), config.SPEED * 3, config.ACC, "approach")
-        self.move("moveL", to_pose(T), config.SPEED, config.ACC, "grasp pose")
+    def _run(self, name, action):
+        """close view -> waypoints -> approach -> straight down -> action -> straight up -> waypoints backwards."""
+        t = load("targets")[name]
+        T_bt = self.find(name)
+        path = [T_bt @ np.array(P) for P in t.get("path", [])]
+        grasp = T_bt @ np.array(t["tag_grasp"])
+        pre = grasp.copy()
+        pre[2, 3] += t.get("approach_height", config.APPROACH)  # straight above in the base frame: vertical gripper
+        for i, P in enumerate(path):
+            self.move("moveL", to_pose(P), config.SPEED * 3, config.ACC, f"waypoint {i + 1}")
+        self.move("moveL", to_pose(pre), config.SPEED * 2, config.ACC, "approach")
+        self.move("moveL", to_pose(grasp), config.SPEED, config.ACC, "grasp pose")
         action()
-        self.move("moveL", to_pose(pre), config.SPEED, config.ACC, "retract")
+        self.move("moveL", to_pose(pre), config.SPEED, config.ACC, "back up")
+        for i, P in reversed(list(enumerate(path))):
+            self.move("moveL", to_pose(P), config.SPEED * 3, config.ACC, f"waypoint {i + 1}")
 
     def pick(self, name):
         self.gripper(close=False)
-        self._in_out(self.find(name), lambda: self.gripper(close=True))
+        self._run(name, lambda: self.gripper(close=True))
 
     def place(self, name):
-        self._in_out(self.find(name), lambda: self.gripper(close=False))
+        self._run(name, lambda: self.gripper(close=False))

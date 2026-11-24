@@ -30,7 +30,8 @@ on the same network. When a step needs you, the page shows what to do: move the 
 1. Camera calibration - chessboard, ~20 captures (error < 0.5 px)
 2. Hand-eye calibration - chessboard fixed, 12+ tilted poses (spread < 2-3 mm)
 3. Save pose `home` - tucked in over the platform
-4. Teach a target (e.g. `spot`, tag 0) - search pose, close view, grasp pose
+4. Teach a target (e.g. `oven1`, tag 1) - search pose, close view, waypoints on the way in (e.g. out from the
+   MiR, oven entrance; Done when finished), approach straight above the spot, grasp pose
 5. Pick / Place
 
 ## Run on boot
