@@ -156,3 +156,23 @@ def test_delete_target_and_pose(server):
     assert s["targets"] == [{"name": "oven1", "tag": 1, "oven": None}] and s["poses"] == []
     assert post(url + "/api/delete", {"kind": "targets", "name": "spot"})[0] == 400   # already gone
     assert post(url + "/api/delete", {"kind": "../etc", "name": "x"})[0] == 400
+
+
+def test_update_pulls_and_restarts_only_on_change(monkeypatch):
+    exits, replies = [], iter([(0, "Already up to date.\n"), (0, "Updating ab12..cd34\n web.py | 2 +-\n"),
+                               (1, "fatal: unable to access github.com\n")])
+
+    def fake_run(cmd, **kw):
+        code, out = next(replies)
+        return type("R", (), {"returncode": code, "stdout": out, "stderr": ""})()
+
+    monkeypatch.setattr(web.subprocess, "run", fake_run)
+    monkeypatch.setattr(web.threading, "Timer", lambda s, f, a: type("T", (), {"start": lambda self: exits.append(a)})())
+    jobs = web.Jobs()
+    web.update(jobs)
+    assert exits == []                                    # nothing new: keep running
+    web.update(jobs)
+    assert exits == [[0]] and "restarting" in jobs.log[-1]
+    with pytest.raises(RuntimeError, match="git pull failed"):
+        web.update(jobs)
+    assert exits == [[0]]                                 # failed pull: no restart

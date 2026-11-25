@@ -15,7 +15,7 @@
   .chip { padding:3px 10px; border-radius:99px; font-size:13px; background:#eef0f3; }
   .chip.ok { background:#e3f4ea; color:var(--ok); } .chip.bad { background:#fde8e8; color:var(--bad); }
   .chip.busy { background:#e6eefe; color:var(--act); }
-  #stop { margin-left:auto; background:var(--bad); color:#fff; font-weight:700; font-size:16px;
+  #stop { background:var(--bad); color:#fff; font-weight:700; font-size:16px;
           padding:10px 26px; border:0; border-radius:8px; cursor:pointer; }
   main { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr); gap:16px; padding:16px; }
   @media (max-width:900px) { main { grid-template-columns:1fr; } }
@@ -47,6 +47,8 @@
   <span class="chip" id="c-int">camera calibration</span>
   <span class="chip" id="c-he">hand-eye</span>
   <span class="chip" id="c-job">idle</span>
+  <button class="act" style="margin-left:auto" title="git pull + restart (only when nothing is running)"
+          onclick="if (confirm('Pull the latest code from git and restart?')) post('update')">Update</button>
   <button id="stop" onclick="post('stop')">STOP</button>
 </header>
 

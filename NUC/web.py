@@ -4,8 +4,10 @@ One job (calibration, teach, pick, ...) runs at a time in a worker thread. When 
 wait(msg): the page shows the message with Continue / Done buttons and the job blocks until one is clicked.
 """
 import json
+import os
 import queue
 import re
+import subprocess
 import threading
 import time
 from collections import deque
@@ -107,6 +109,20 @@ def pick_or_place(ur, kind, name):
         ur.go("home")
 
 
+def update(j):
+    """git pull; if anything changed, exit so systemd (Restart=always) starts the new code a few seconds later."""
+    repo = Path(__file__).parent
+    r = subprocess.run(["git", "pull"], cwd=repo, capture_output=True, text=True, timeout=60)
+    for line in (r.stdout + r.stderr).strip().splitlines():
+        j.say("   " + line)
+    if r.returncode != 0:
+        raise RuntimeError("git pull failed - still running the old code")
+    if "Already up to date" in r.stdout:
+        return
+    j.say("restarting with the new code in 2 s - refresh the page in ~10 s")
+    threading.Timer(2, os._exit, [0]).start()
+
+
 def check(ur, name):
     ok, _, text = ur.check_parking(name)
     ur.log(("PARKING OK: " if ok else "PARKING NOT OK - move the MiR: ") + text)
@@ -155,6 +171,8 @@ def make_job(cam, action, d, jobs):
                 lambda j: Oven(oven).open(j.say) if opening else Oven(oven).close(j.say))
     if action in ("pick", "place"):
         return f"{action} {name}", robot_job(cam, lambda ur: pick_or_place(ur, action, name))
+    if action == "update":
+        return "update", update
     if action == "search":
         return "go to search pose", robot_job(cam, lambda ur: ur.search())
     if action == "check":
