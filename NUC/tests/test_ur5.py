@@ -127,9 +127,10 @@ class FakeOven:
         FakeOven.calls.append(("close", self.name))
 
 
-# taught poses for an oven-like target: search, close view, 2 waypoints, approach (12 cm up, 3 mm off), grasp
+# taught poses for an oven target: search, close view, clear pose, 2 waypoints, approach (12 cm up, 3 mm off), grasp
 SEARCH = to_T([0.45, 0.1, 0.6, np.pi, 0, 0])
 VIEW = to_T([0.5, 0.1, 0.3, np.pi, 0, 0])
+CLEAR = to_T([0.4, 0.0, 0.4, np.pi, 0, 0])
 OUT = to_T([0.55, 0.0, 0.35, np.pi, 0, 0])
 ENTRANCE = to_T([0.7, 0.15, 0.2, np.pi, 0, 0])
 APPROACH = to_T([0.803, 0.15, 0.16, np.pi, 0, 0])
@@ -138,7 +139,7 @@ GRASP = to_T([0.8, 0.15, 0.04, np.pi, 0, 0])
 
 def teach_user(rob, steps):
     """Fake user: for each prompt, jog to the next pose; None = press Done without moving.
-    Prompt order in teach: search, close view, waypoints..., Done, approach, grasp."""
+    Prompt order in teach: search, close view, (oven: clear pose), waypoints..., Done, approach, grasp."""
     steps = iter(steps)
 
     def user(msg):
@@ -160,7 +161,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr("ur5.arm.Oven", FakeOven)
     FakeOven.calls = []
     cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag on the oven door
-    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, OUT, ENTRANCE, None, APPROACH, GRASP]),
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, CLEAR, OUT, ENTRANCE, None, APPROACH, GRASP]),
              log=lambda line: None)
     ur.X = X
     ur.teach("oven1", 0, oven="oven1")
@@ -178,10 +179,12 @@ def test_pick_follows_moved_tag_through_waypoints(setup):
     rob.moveL = lambda p, *a: (events.append("move"), rob.moves.append(to_T(p)), setattr(rob, "T", to_T(p)), True)[3]
     FakeOven.calls = events                                 # door commands land in the same timeline
     ur.pick("oven1")
-    assert events == ["move", ("open", "oven1")] + ["move"] * 7 + [("close", "oven1")]  # look, open, in+out, close
-    view, out, entrance, pre, at, back, entrance2, out2 = rob.moves
-    for got, taught in ((view, VIEW), (out, OUT), (entrance, ENTRANCE), (at, GRASP)):
+    # close view, clear pose, door opens, in + out, clear pose, door closes
+    assert events == ["move", "move", ("open", "oven1")] + ["move"] * 7 + ["move", ("close", "oven1")]
+    view, clear, out, entrance, pre, at, back, entrance2, out2, clear2 = rob.moves
+    for got, taught in ((view, VIEW), (clear, CLEAR), (out, OUT), (entrance, ENTRANCE), (at, GRASP)):
         assert np.allclose(got, M @ taught, atol=1e-6)
+    assert np.allclose(clear2, clear)
     assert np.allclose(pre[:3, 3] - at[:3, 3], [0, 0, 0.12])  # straight above, taught height (side offset dropped)
     assert np.allclose(pre[:3, :3], at[:3, :3])               # same orientation on the way down
     assert np.allclose(back, pre) and np.allclose(entrance2, entrance) and np.allclose(out2, out)

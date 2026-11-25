@@ -33,8 +33,9 @@ on the same network. When a step needs you, the page shows what to do: move the 
 2. Hand-eye calibration - chessboard fixed, 12+ tilted poses (spread < 2-3 mm)
 3. Save pose `home` - tucked in over the platform
 4. Teach a target (e.g. `oven1`, tag 1 on the oven door, oven `oven1`) - search pose, close view (door closed),
-   the door opens, waypoints on the way in (e.g. out from the MiR, oven entrance; Done when finished), approach
-   straight above the spot, grasp pose. Pick/Place then: look at the closed door, open it, go in, come out, close it.
+   clear pose (arm out of the door's way), the door opens, waypoints on the way in (e.g. the oven approach; Done
+   when finished), approach straight above the spot, grasp pose. Pick/Place then: look at the closed door, clear
+   pose, open it, go in, come out, clear pose, close it, home.
 5. Pick / Place
 
 ## Run on boot

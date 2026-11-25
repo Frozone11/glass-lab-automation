@@ -170,21 +170,24 @@ class UR5:
 
     # ---- tag-relative targets ----
     def teach(self, name, tag_id, oven=None):
-        """Search pose, close view, any number of waypoints on the way in (e.g. 'out a bit', 'oven entrance'),
-        the pick/place approach straight above the spot, and the grasp pose. All but the search pose are stored
-        relative to the tag, so they follow it. oven: name in config.OVENS whose door opens after the close view
-        (the tag may sit on that door: it is only measured while the door is closed)."""
+        """Search pose, close view, (oven: CLEAR pose out of the door's way, then the door opens), any number of
+        waypoints on the way in (e.g. the oven approach), the pick/place approach straight above the spot, and the
+        grasp pose. All but the search pose are stored relative to the tag, so they follow it. oven: name in
+        config.OVENS (the tag may sit on its door: it is only measured while the door is closed)."""
         self.freedrive("SEARCH pose: camera ~50-60 cm from the tag, tag in the middle of the image.")
         q_search = list(self.r.getActualQ())
         self.locate(tag_id)  # check the tag is visible from here
         self.freedrive("CLOSE view: camera ~20-30 cm from the tag, roughly straight on." +
                        (" The door must be closed." if oven else ""))
         T_bt = self.locate(tag_id)
-        if oven:
-            Oven(oven).open(self.log)
         rel = lambda: (inv(T_bt) @ self.tcp()).tolist()
-        tag_view, path = rel(), []
-        while self.freedrive(f"WAYPOINT {len(path) + 1} on the way in (e.g. out from the MiR, then the oven entrance). "
+        tag_view, tag_clear, path = rel(), None, []
+        if oven:
+            self.freedrive("CLEAR pose: move the arm out of the way of the opening door (the camera doesn't need to "
+                           "see anything here). The door opens after this.")
+            tag_clear = rel()
+            Oven(oven).open(self.log)
+        while self.freedrive(f"WAYPOINT {len(path) + 1} on the way in (e.g. the oven approach). "
                              f"Continue = save this point, Done = no more waypoints (doesn't save).") != "done":
             path.append(rel())
             self.log(f"   waypoint {len(path)} saved")
@@ -200,7 +203,8 @@ class UR5:
             self.log(f"   note: approach was {sideways:.0f} mm off to the side - it will go straight down instead")
         targets = load("targets")
         targets[name] = {"tag": tag_id, "oven": oven, "q_search": q_search, "base_tag": T_bt.tolist(),
-                         "tag_view": tag_view, "path": path, "approach_height": float(height), "tag_grasp": rel()}
+                         "tag_view": tag_view, "tag_clear": tag_clear, "path": path,
+                         "approach_height": float(height), "tag_grasp": rel()}
         save("targets", targets)
         self.log(f"   {len(path)} waypoints, approach {height * 100:.1f} cm above the grasp pose")
         if oven:
@@ -224,11 +228,14 @@ class UR5:
         return self.locate(tag)                                         # fine, same view as when taught
 
     def _run(self, name, action):
-        """close view -> (open door) -> waypoints -> approach -> straight down -> action -> straight up ->
-        waypoints backwards -> (close door)."""
+        """close view -> (clear pose, open door) -> waypoints -> approach -> straight down -> action ->
+        straight up -> waypoints backwards -> (clear pose, close door). The caller then goes home/idle."""
         t = load("targets")[name]
         T_bt = self.find(name)  # with a door: measured while it is still closed
         oven = Oven(t["oven"]) if t.get("oven") else None
+        clear = T_bt @ np.array(t["tag_clear"]) if t.get("tag_clear") else None
+        if clear is not None:
+            self.move("moveL", to_pose(clear), config.SPEED * 3, config.ACC, "clear pose")
         if oven:
             oven.open(self.log)
         path = [T_bt @ np.array(P) for P in t.get("path", [])]
@@ -243,6 +250,8 @@ class UR5:
         self.move("moveL", to_pose(pre), config.SPEED, config.ACC, "back up")
         for i, P in reversed(list(enumerate(path))):
             self.move("moveL", to_pose(P), config.SPEED * 3, config.ACC, f"waypoint {i + 1}")
+        if clear is not None:
+            self.move("moveL", to_pose(clear), config.SPEED * 3, config.ACC, "clear pose")
         if oven:
             oven.close(self.log)
 

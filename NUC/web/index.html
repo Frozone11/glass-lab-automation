@@ -84,8 +84,8 @@
         <select id="t-oven" title="oven whose door opens after the close view"><option value="">no oven</option></select>
         <button class="act" onclick="post('teach',{name:val('t-name'),tag:+val('t-tag'),oven:$('t-oven').value})">Teach</button>
       </div>
-      <div class="mute">With an oven picked, the robot measures the tag with the door closed, then opens the door,
-        and Pick/Place close it again at the end. Teach asks for: search pose, close view, waypoints on the way in (as many as you like, Done when
+      <div class="mute">With an oven picked, the robot measures the tag with the door closed, moves to a CLEAR pose
+        out of the door's way, then opens the door; Pick/Place come back to the clear pose and close it at the end. Teach asks for: search pose, close view, waypoints on the way in (as many as you like, Done when
         finished), approach straight above the spot, grasp. Pick/Place drive the same path in and back out.</div>
       <table id="targets"></table>
     </div>
