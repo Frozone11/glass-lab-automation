@@ -16,7 +16,8 @@ from ur5.vision import DICT
 
 @pytest.fixture(autouse=True)
 def no_ovens(monkeypatch):
-    monkeypatch.setattr(config, "OVENS", {})  # STOP would otherwise try to reach the real oven ESP32
+    monkeypatch.setattr(config, "OVENS", {})  # STOP would otherwise try to reach the real oven ESP32 ...
+    monkeypatch.setattr(config, "MIR_IP", "127.0.0.1:1")  # ... and the real MiR (port 1: refused at once)
 
 
 def wait_until(cond, timeout=3):
@@ -128,6 +129,9 @@ def test_bad_requests_rejected(server):
     assert post(url + "/api/home")[0] == 400          # no home pose saved yet
     assert post(url + "/api/answer", {"key": "x"})[0] == 400
     assert post(url + "/api/bogus")[0] == 400
+    assert post(url + "/api/check", {"name": "nothere"})[0] == 400
+    assert post(url + "/api/mir_go", {"mission": ""})[0] == 400
+    assert post(url + "/api/mir_pause")[0] == 400       # MiR not reachable -> clear error, not a crash
 
 
 def test_calibration_job_through_http(server):

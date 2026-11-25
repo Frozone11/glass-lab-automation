@@ -79,15 +79,32 @@
     <div class="card">
       <h2>Targets</h2>
       <div class="row">
+        <button class="act" onclick="post('save_pose',{name:'search'})">Set search pose</button>
+        <button class="act" onclick="post('search')">Go to search pose</button>
+        <span class="mute" id="search-state"></span>
+      </div>
+      <div class="row">
         <input id="t-name" placeholder="name, e.g. oven1">
         <input id="t-tag" class="num" type="number" min="0" max="49" placeholder="tag">
         <select id="t-oven" title="oven whose door opens after the close view"><option value="">no oven</option></select>
         <button class="act" onclick="post('teach',{name:val('t-name'),tag:+val('t-tag'),oven:$('t-oven').value})">Teach</button>
       </div>
-      <div class="mute">With an oven picked, the robot measures the tag with the door closed, moves to a CLEAR pose
-        out of the door's way, then opens the door; Pick/Place come back to the clear pose and close it at the end. Teach asks for: search pose, close view, waypoints on the way in (as many as you like, Done when
-        finished), approach straight above the spot, grasp. Pick/Place drive the same path in and back out.</div>
+      <div class="mute">Park the MiR so the tag is in view from the general search pose. <b>Check</b> says whether
+        it's parked within the window (Pick/Place refuse otherwise). Teach starts at the search pose, then asks for: close
+        view, (oven: clear pose, door opens), waypoints in (Done when finished), approach above the spot, grasp.</div>
       <table id="targets"></table>
+    </div>
+
+    <div class="card">
+      <h2>MiR</h2>
+      <div class="row" id="mir-state"></div>
+      <div class="row">
+        <select id="mir-mission"></select>
+        <button class="act" onclick="post('mir_go',{mission:$('mir-mission').value})">Go</button>
+        <button onclick="post('mir_pause')">Pause</button>
+        <button onclick="post('mir_resume')">Continue</button>
+      </div>
+      <div class="mute">Missions are made in the MiR web interface (e.g. "go to oven1"). Go tucks the arm in (home) first.</div>
     </div>
 
     <div class="card">
@@ -152,8 +169,18 @@ async function refresh() {
     `<tr><td><b>${esc(t.name)}</b> <span class="mute">tag ${t.tag}${t.oven ? ' · ' + esc(t.oven) : ''}</span></td>
      <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('pick',{name:'${esc(t.name)}'})">Pick</button>
          <button class="act" ${s.job ? 'disabled' : ''} onclick="post('place',{name:'${esc(t.name)}'})">Place</button>
+         <button class="act" ${s.job ? 'disabled' : ''} title="Is the MiR parked within the window? (arm goes to the search pose)" onclick="post('check',{name:'${esc(t.name)}'})">Check</button>
          <button class="act" ${s.job ? 'disabled' : ''} title="Delete" onclick="del('targets','${esc(t.name)}')">✕</button></td></tr>`
   ).join('') : '<tr><td class="mute">No targets yet - teach one above.</td></tr>';
+  const m = s.mir;
+  $('mir-state').innerHTML = `<b>${esc(m.state)}</b>` + (m.battery != null ? ` <span class="mute">battery ${Math.round(m.battery)}%</span>` : '')
+    + (m.mission ? ` <span class="mute">· ${esc(m.mission)}</span>` : '');
+  const ms = $('mir-mission'), mnames = m.missions.join('\n');
+  if (ms.dataset.names !== mnames) {
+    ms.dataset.names = mnames;
+    ms.innerHTML = m.missions.length ? m.missions.map(n => `<option>${esc(n)}</option>`).join('') : '<option value="">no missions</option>';
+  }
+  $('search-state').textContent = s.poses.includes('search') ? '' : 'not set yet';
   $('ovens').innerHTML = s.ovens.map(o =>
     `<tr><td><b>${esc(o.name)}</b> <span class="mute">door ${esc(o.door)}</span></td>
      <td><button class="act" ${s.job ? 'disabled' : ''} onclick="post('door',{oven:'${esc(o.name)}',open:true})">Open</button>

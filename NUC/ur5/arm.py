@@ -20,6 +20,22 @@ def save(name, data):
     (config.DATA / f"{name}.json").write_text(json.dumps(data, indent=1))
 
 
+def parking(T_taught, T_now):
+    """Compare where a tag is now with where it was when its target was taught (both in the arm's base frame).
+    Returns (ok, plain-language description as seen from the arm)."""
+    d = T_now[:3, 3] - T_taught[:3, 3]
+    out = T_taught[:2, 3] / np.linalg.norm(T_taught[:2, 3])         # horizontal direction from the arm to the tag
+    further, left, up = d[:2] @ out, d[:2] @ np.array([-out[1], out[0]]), d[2]
+    R = T_now[:3, :3] @ T_taught[:3, :3].T
+    yaw = np.degrees(np.arctan2(R[1, 0], R[0, 0]))                  # turn about the vertical
+    ok = np.hypot(further, left) <= config.PARK_TOL and abs(up) <= config.PARK_TOL / 2 and abs(yaw) <= config.PARK_YAW
+    text = (f"oven {abs(further) * 100:.0f} cm {'further away' if further > 0 else 'closer'}, "
+            f"{abs(left) * 100:.0f} cm to the {'left' if left > 0 else 'right'}, "
+            f"{abs(up) * 100:.0f} cm {'higher' if up > 0 else 'lower'}, turned {abs(yaw):.0f} deg "
+            f"{'left' if yaw > 0 else 'right'} (seen from the arm, vs. when taught)")
+    return bool(ok), text
+
+
 class UR5:
     def __init__(self, c, r, io, cam, wait, log=print):
         """c/r/io: ur_rtde control/receive/io interfaces (use UR5.connect() for the real robot).
@@ -169,14 +185,19 @@ class UR5:
         return spread
 
     # ---- tag-relative targets ----
+    def search(self):
+        """Go to the general search pose (one for all stations, fixed to the arm)."""
+        if "search" not in load("poses"):
+            raise RuntimeError("no general 'search' pose yet - set it first (Set search pose)")
+        self.go("search")
+
     def teach(self, name, tag_id, oven=None):
-        """Search pose, close view, (oven: CLEAR pose out of the door's way, then the door opens), any number of
-        waypoints on the way in (e.g. the oven approach), the pick/place approach straight above the spot, and the
-        grasp pose. All but the search pose are stored relative to the tag, so they follow it. oven: name in
-        config.OVENS (the tag may sit on its door: it is only measured while the door is closed)."""
-        self.freedrive("SEARCH pose: camera ~50-60 cm from the tag, tag in the middle of the image.")
-        q_search = list(self.r.getActualQ())
-        self.locate(tag_id)  # check the tag is visible from here
+        """From the general search pose: close view, (oven: CLEAR pose out of the door's way, then the door opens),
+        any number of waypoints on the way in (e.g. the oven approach), the pick/place approach straight above the
+        spot, and the grasp pose. All are stored relative to the tag, so they follow the oven wherever it stands.
+        oven: name in config.OVENS (the tag may sit on its door: it is only measured while the door is closed)."""
+        self.search()
+        self.locate(tag_id)  # the MiR must be parked so the tag is in view from the search pose
         self.freedrive("CLOSE view: camera ~20-30 cm from the tag, roughly straight on." +
                        (" The door must be closed." if oven else ""))
         T_bt = self.locate(tag_id)
@@ -202,7 +223,7 @@ class UR5:
         if sideways > 5:
             self.log(f"   note: approach was {sideways:.0f} mm off to the side - it will go straight down instead")
         targets = load("targets")
-        targets[name] = {"tag": tag_id, "oven": oven, "q_search": q_search, "base_tag": T_bt.tolist(),
+        targets[name] = {"tag": tag_id, "oven": oven, "base_tag": T_bt.tolist(),
                          "tag_view": tag_view, "tag_clear": tag_clear, "path": path,
                          "approach_height": float(height), "tag_grasp": rel()}
         save("targets", targets)
@@ -214,18 +235,26 @@ class UR5:
     def tag(t):
         return t["tag"] if "tag" in t else t["tags"][0]  # targets taught with the old multi-tag version
 
-    def find(self, name):
-        """Search from far, refine from the taught close view; returns the tag pose in the base frame."""
+    def check_parking(self, name):
+        """From the search pose: is the MiR parked so this target is within the parking window? Returns (ok, text)."""
         t = load("targets")[name]
-        tag = self.tag(t)
-        self.move("moveJ", t["q_search"], config.JSPEED, config.JACC, "search pose")
-        T_bt = self.locate(tag)                                         # coarse, wide view
-        off = np.linalg.norm(T_bt[:3, 3] - np.array(t["base_tag"])[:3, 3])
-        if off > config.MAX_OFFSET:
-            raise RuntimeError(f"tag {tag} is {off * 100:.0f} cm from where it was taught - not moving")
-        self.log(f"   tag {tag} found, {off * 100:.1f} cm from where it was taught")
+        if "q_search" in t and "search" not in load("poses"):  # taught before the general search pose existed
+            self.move("moveJ", t["q_search"], config.JSPEED, config.JACC, "search pose")
+        else:
+            self.search()
+        T_bt = self.locate(self.tag(t))
+        ok, text = parking(np.array(t["base_tag"]), T_bt)
+        return ok, T_bt, text
+
+    def find(self, name):
+        """Search pose, parking check, then refine from the taught close view; returns the tag pose in the base frame."""
+        t = load("targets")[name]
+        ok, T_bt, text = self.check_parking(name)
+        if not ok:
+            raise RuntimeError(f"parked outside the window - {text}. Move the MiR and try again")
+        self.log(f"   parking OK: {text}")
         self.move("moveL", to_pose(T_bt @ np.array(t["tag_view"])), config.SPEED * 3, config.ACC, "close view")
-        return self.locate(tag)                                         # fine, same view as when taught
+        return self.locate(self.tag(t))                                 # fine, same view as when taught
 
     def _run(self, name, action):
         """close view -> (clear pose, open door) -> waypoints -> approach -> straight down -> action ->

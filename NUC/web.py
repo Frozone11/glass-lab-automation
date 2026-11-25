@@ -16,18 +16,20 @@ import cv2
 import numpy as np
 
 import config
+from mir import MiR
 from oven import Oven
 from ur5.arm import UR5, load, save
 from ur5.vision import DICT, Camera
 
 PAGE = Path(__file__).parent / "web" / "index.html"
 OVEN_STATE = {name: "unknown" for name in config.OVENS}   # kept fresh by watch_ovens()
+MIR_STATE = {"state": "unknown", "battery": None, "mission": None, "missions": []}  # kept fresh by watch_mir()
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
 
 
 class Jobs:
     def __init__(self):
-        self.name, self.msg, self.waiting, self.ur = None, "", False, None
+        self.name, self.msg, self.waiting, self.ur, self.stop_requested = None, "", False, None, False
         self.log = deque(maxlen=200)
         self._answers = queue.Queue()
 
@@ -37,7 +39,7 @@ class Jobs:
     def start(self, name, job):
         if self.name:
             raise ValueError(f"'{self.name}' is still running - finish or stop it first")
-        self.name, self.msg = name, ""
+        self.name, self.msg, self.stop_requested = name, "", False
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
 
     def _run(self, job):
@@ -66,6 +68,11 @@ class Jobs:
 
     def stop(self):
         self.say("STOP pressed")
+        self.stop_requested = True
+        try:
+            MiR().pause()
+        except Exception as e:
+            self.say(f"   MiR: could not pause ({e})")
         if self.waiting:
             self.answer("stop")
         if self.ur is not None:
@@ -100,12 +107,26 @@ def pick_or_place(ur, kind, name):
         ur.go("home")
 
 
-def make_job(cam, action, d):
+def check(ur, name):
+    ok, _, text = ur.check_parking(name)
+    ur.log(("PARKING OK: " if ok else "PARKING NOT OK - move the MiR: ") + text)
+    ur.log("   arm stays at the search pose so you can watch the camera - Go home before driving the MiR")
+
+
+def drive(ur, mission, jobs):
+    """Tuck the arm in first: the MiR must never drive with the arm out."""
+    if "home" not in load("poses"):
+        raise RuntimeError("no 'home' pose - save one first, the arm must be tucked in before the MiR drives")
+    ur.go("home")
+    MiR().run_mission(mission, ur.log, lambda: jobs.stop_requested)
+
+
+def make_job(cam, action, d, jobs):
     """-> (job name, job) for a POST /api/<action>, or ValueError for bad input."""
     name = str(d.get("name", ""))
-    if action in ("save_pose", "teach", "pick", "place") and not NAME.match(name):
+    if action in ("save_pose", "teach", "pick", "place", "check") and not NAME.match(name):
         raise ValueError("name: 1-30 letters, digits, - or _")
-    if action in ("pick", "place") and name not in load("targets"):
+    if action in ("pick", "place", "check") and name not in load("targets"):
         raise ValueError(f"no target '{name}' - teach it first")
     if action == "intrinsics":
         return "camera calibration", lambda j: cam.calibrate(j.wait, j.say)
@@ -134,6 +155,15 @@ def make_job(cam, action, d):
                 lambda j: Oven(oven).open(j.say) if opening else Oven(oven).close(j.say))
     if action in ("pick", "place"):
         return f"{action} {name}", robot_job(cam, lambda ur: pick_or_place(ur, action, name))
+    if action == "search":
+        return "go to search pose", robot_job(cam, lambda ur: ur.search())
+    if action == "check":
+        return f"check parking for {name}", robot_job(cam, lambda ur: check(ur, name))
+    if action == "mir_go":
+        mission = str(d.get("mission", ""))
+        if not mission:
+            raise ValueError("pick a MiR mission")
+        return f"MiR: {mission}", robot_job(cam, lambda ur: drive(ur, mission, jobs))
     if action == "grip":
         close = bool(d.get("close"))
         return f"gripper {'close' if close else 'open'}", robot_job(cam, lambda ur: ur.gripper(close))
@@ -180,6 +210,7 @@ def status(cam, jobs):
         "poses": sorted(load("poses")),
         "targets": [{"name": k, "tag": UR5.tag(v), "oven": v.get("oven")} for k, v in sorted(load("targets").items())],
         "ovens": [{"name": k, "door": v} for k, v in sorted(OVEN_STATE.items())],
+        "mir": MIR_STATE,
     }
 
 
@@ -191,6 +222,20 @@ def watch_ovens():
                 OVEN_STATE[name] = Oven(name).door(timeout=1) or "unknown"
             except Exception:
                 OVEN_STATE[name] = "not reachable"
+        time.sleep(2)
+
+
+def watch_mir():
+    """Poll the MiR's status (every 2 s) and mission list (every 30 s) in the background."""
+    n = 0
+    while True:
+        try:
+            MIR_STATE.update(MiR().status(timeout=1))
+            if n % 15 == 0:
+                MIR_STATE["missions"] = MiR().missions(timeout=2)
+        except Exception:
+            MIR_STATE.update(state="not reachable", battery=None, mission=None)
+        n += 1
         time.sleep(2)
 
 
@@ -250,8 +295,13 @@ def make_server(cam, jobs, port=config.WEB_PORT):
                     jobs.stop()
                 elif action == "delete":
                     delete(jobs, d)
+                elif action in ("mir_pause", "mir_resume"):  # instant, also while a job runs
+                    try:
+                        MiR().pause() if action == "mir_pause" else MiR().resume()
+                    except RuntimeError as e:
+                        raise ValueError(str(e))
                 else:
-                    jobs.start(*make_job(cam, action, d))
+                    jobs.start(*make_job(cam, action, d, jobs))
                 self.send(200, {"ok": True})
             except (ValueError, json.JSONDecodeError) as e:
                 self.send(400, {"error": str(e)})
@@ -263,6 +313,7 @@ def make_server(cam, jobs, port=config.WEB_PORT):
 
 if __name__ == "__main__":
     threading.Thread(target=watch_ovens, daemon=True).start()
+    threading.Thread(target=watch_mir, daemon=True).start()
     srv = make_server(Camera(), Jobs())
     print(f"GlasLab control page on http://localhost:{srv.server_address[1]}")
     srv.serve_forever()

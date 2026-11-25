@@ -15,11 +15,17 @@ GRIP_TIME = 1.0                      # s to wait for the gripper to finish movin
 APPROACH = 0.10                 # m straight above the grasp pose to come down from / go back up to
 SPEED, ACC = 0.05, 0.2          # linear moves near the object (m/s, m/s^2) - slow until trusted
 JSPEED, JACC = 0.5, 0.5         # joint moves (rad/s, rad/s^2)
-MAX_OFFSET = 0.30               # refuse if the tag is further than this from where it was taught (wrong tag / bad detection)
+PARK_TOL = 0.10                 # parking window: how far (m) the oven may be from where it was taught, seen from the arm
+PARK_YAW = 10                   # ... and how much it may be turned (deg). Outside: the arm won't go in
 
 # Oven ESP32s (same firmware as MVP2): name -> IP address and API key. Targets can be linked to an oven.
 OVENS = {"oven1": {"host": "192.168.12.50", "key": "oven_control"}}
 OVEN_DOOR_TIMEOUT = 30          # s to wait for a door move, must be longer than a full move
+
+# MiR100 REST API. User/password as in the MiR web interface (factory default often admin / admin).
+MIR_IP = "192.168.12.20"
+MIR_USER, MIR_PASSWORD = "distributor", "distributor"
+MIR_MISSION_TIMEOUT = 600       # s to wait for a mission (driving to a station) to finish
 
 WEB_PORT = 8000                 # control page: http://<NUC-IP>:8000
 

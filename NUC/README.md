@@ -5,6 +5,7 @@ all from a web page.
 
 ```
 web.py           web server: control page, live camera, jobs (python web.py)
+mir.py           MiR100 REST API: status, missions (stations), pause/continue
 oven.py          oven door open/close through the oven's ESP32 (HTTP, same firmware/API as MVP2), waits for the door
 web/index.html   the control page
 config.py        all settings (IPs, camera, tag size, gripper outputs, speeds, port)
@@ -22,7 +23,8 @@ uv pip install -r requirements.txt
 python -m pytest
 ```
 Edit `config.py`: `ROBOT_IP`, `CAM`, `TAG_SIZE` and `SQUARE` (measured), `GRIP_OPEN_DO` / `GRIP_CLOSE_DO`,
-and `OVENS` (each oven's ESP32 IP and API key, the same as `OVEN_HOST` / `OVEN_KEY` in MVP2).
+`OVENS` (each oven's ESP32 IP and API key, the same as `OVEN_HOST` / `OVEN_KEY` in MVP2), and `MIR_IP` /
+`MIR_USER` / `MIR_PASSWORD`.
 
 ## Use
 `python web.py`, then open http://localhost:8000 on the NUC, or http://<NUC-IP>:8000 from another computer
@@ -31,12 +33,15 @@ on the same network. When a step needs you, the page shows what to do: move the 
 
 1. Camera calibration - chessboard, ~20 captures (error < 0.5 px)
 2. Hand-eye calibration - chessboard fixed, 12+ tilted poses (spread < 2-3 mm)
-3. Save pose `home` - tucked in over the platform
-4. Teach a target (e.g. `oven1`, tag 1 on the oven door, oven `oven1`) - search pose, close view (door closed),
-   clear pose (arm out of the door's way), the door opens, waypoints on the way in (e.g. the oven approach; Done
-   when finished), approach straight above the spot, grasp pose. Pick/Place then: look at the closed door, clear
-   pose, open it, go in, come out, clear pose, close it, home.
-5. Pick / Place
+3. Save pose `home` - tucked in over the platform (the MiR only drives with the arm here)
+4. Set search pose - one general view out over the side of the MiR at table height, used for every station
+5. Teach a target per oven (e.g. `oven1`, tag 1 on the oven door, oven `oven1`), with the MiR parked so the tag is
+   in view from the search pose: close view (door closed), clear pose (arm out of the door's way), the door opens,
+   waypoints on the way in (e.g. the oven approach; Done when finished), approach straight above the spot, grasp.
+   All of it is stored relative to the tag, so the oven can be moved: just park the MiR in front of it again.
+6. MiR: run a mission (station, made in the MiR web interface) with Go - the arm goes home first.
+   Check a target: is the MiR parked within the window (`PARK_TOL`, `PARK_YAW`)? If not, it says how far off.
+7. Pick / Place
 
 ## Run on boot
 ```bash

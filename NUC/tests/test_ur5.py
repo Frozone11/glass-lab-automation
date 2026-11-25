@@ -137,9 +137,15 @@ APPROACH = to_T([0.803, 0.15, 0.16, np.pi, 0, 0])
 GRASP = to_T([0.8, 0.15, 0.04, np.pi, 0, 0])
 
 
+def save_search():
+    from ur5.arm import save
+    save("poses", {"search": to_pose(SEARCH)})  # fake robot: "joints" are just the TCP pose
+
+
 def teach_user(rob, steps):
     """Fake user: for each prompt, jog to the next pose; None = press Done without moving.
-    Prompt order in teach: search, close view, (oven: clear pose), waypoints..., Done, approach, grasp."""
+    Prompt order in teach (starts at the saved general search pose): close view, (oven: clear pose), waypoints...,
+    Done, approach, grasp."""
     steps = iter(steps)
 
     def user(msg):
@@ -156,12 +162,13 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr(config, "GRIP_TIME", 0)
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    save_search()
     rob = FakeRobot()
     X = to_T([0.0, 0.06, 0.03, 0.05, -0.03, 0.02])          # camera slightly off the tool axis
     monkeypatch.setattr("ur5.arm.Oven", FakeOven)
     FakeOven.calls = []
     cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))         # tag on the oven door
-    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, CLEAR, OUT, ENTRANCE, None, APPROACH, GRASP]),
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [VIEW, CLEAR, OUT, ENTRANCE, None, APPROACH, GRASP]),
              log=lambda line: None)
     ur.X = X
     ur.teach("oven1", 0, oven="oven1")
@@ -172,7 +179,7 @@ def setup(tmp_path, monkeypatch):
 
 def test_pick_follows_moved_tag_through_waypoints(setup):
     ur, rob, cam = setup
-    M = yaw([0.08, -0.12, 0], 6)                           # MiR came back 14 cm and 6 deg off
+    M = yaw([0.05, -0.06, 0], 6)                           # MiR came back ~8 cm and 6 deg off: inside the window
     cam.tag = M @ cam.tag
     rob.moves.clear()
     events = []
@@ -196,10 +203,11 @@ def test_target_without_waypoints(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr(config, "GRIP_TIME", 0)
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    save_search()
     rob = FakeRobot()
     X = to_T([0.0, 0.06, 0.03, 0, 0, 0])
     cam = FakeCam(rob, X, yaw([0.5, 0.1, 0.0], 0))
-    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, None, APPROACH, GRASP]), log=lambda line: None)
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [VIEW, None, APPROACH, GRASP]), log=lambda line: None)
     ur.X = X
     ur.teach("spot", 0)
     rob.moves.clear()
@@ -211,9 +219,10 @@ def test_target_without_waypoints(tmp_path, monkeypatch):
 def test_approach_below_grasp_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    save_search()
     rob = FakeRobot()
     cam = FakeCam(rob, np.eye(4), yaw([0.5, 0.1, 0.0], 0))
-    ur = UR5(rob, rob, rob, cam, teach_user(rob, [SEARCH, VIEW, None, GRASP, APPROACH]), log=lambda line: None)
+    ur = UR5(rob, rob, rob, cam, teach_user(rob, [VIEW, None, GRASP, APPROACH]), log=lambda line: None)
     ur.X = np.eye(4)
     with pytest.raises(RuntimeError, match="above the grasp"):
         ur.teach("bad", 0)
@@ -227,10 +236,31 @@ def test_refused_move_raises(setup):
         ur.pick("oven1")
 
 
+def test_parking_description():
+    from ur5.arm import parking
+    taught = to_T([0.6, 0.0, 0.1, 0, 0, 0])                # tag straight out along +x from the arm
+    ok, text = parking(taught, to_T([0.65, 0.03, 0.1, 0, 0, np.radians(4)]))
+    assert ok and "5 cm further away" in text and "3 cm to the left" in text and "turned 4 deg left" in text
+    ok, text = parking(taught, to_T([0.6, -0.12, 0.1, 0, 0, 0]))
+    assert not ok and "12 cm to the right" in text
+    ok, _ = parking(taught, to_T([0.6, 0, 0.1, 0, 0, np.radians(-15)]))
+    assert not ok                                          # turned too much
+    ok, _ = parking(taught, to_T([0.6, 0, 0.16, 0, 0, 0]))
+    assert not ok                                          # table 6 cm higher
+
+
+def test_teach_needs_search_pose(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA", tmp_path)
+    rob = FakeRobot()
+    ur = UR5(rob, rob, rob, FakeCam(rob, np.eye(4), np.eye(4)), lambda m: "next", log=lambda line: None)
+    with pytest.raises(RuntimeError, match="no general 'search' pose"):
+        ur.teach("x", 0)
+
+
 def test_refuses_far_offset(setup):
     ur, rob, cam = setup
     cam.tag = yaw([0.5, 0, 0], 0) @ cam.tag
-    with pytest.raises(RuntimeError, match="from where it was taught"):
+    with pytest.raises(RuntimeError, match="parked outside the window"):
         ur.pick("oven1")
 
 
@@ -257,6 +287,7 @@ class FakeBoardCam:
 def test_auto_handeye_recovers_camera_mount(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr("ur5.arm.time.sleep", lambda s: None)
+    save_search()
     rob = FakeRobot()
     rob.isPoseWithinSafetyLimits = lambda pose: True
     X = to_T([0.01, 0.07, 0.04, 0.08, -0.05, 0.6])               # true camera mount, unknown to the code
