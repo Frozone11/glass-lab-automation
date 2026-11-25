@@ -176,3 +176,16 @@ def test_update_pulls_and_restarts_only_on_change(monkeypatch):
     with pytest.raises(RuntimeError, match="git pull failed"):
         web.update(jobs)
     assert exits == [[0]]                                 # failed pull: no restart
+
+
+def test_demo_save_list_delete(server):
+    url, _ = server
+    (config.DATA / "targets.json").write_text(json.dumps({"spot": {"tag": 0}}))
+    assert post(url + "/api/demo_save", {"name": "first demo", "recipe": "pick spot"})[0] == 400   # bad name
+    assert post(url + "/api/demo_save", {"name": "first", "recipe": "pick nowhere"})[0] == 400    # bad recipe
+    assert post(url + "/api/demo_save", {"name": "first", "recipe": "pick spot\nwait 2"}) == (200, {"ok": True})
+    s = json.loads(get(url + "/status")[1])
+    assert s["demos"] == [{"name": "first", "recipe": "pick spot\nwait 2"}] and s["step"] is None
+    assert post(url + "/api/demo_run", {"name": "nothere"})[0] == 400
+    assert post(url + "/api/delete", {"kind": "demos", "name": "first"}) == (200, {"ok": True})
+    assert json.loads(get(url + "/status")[1])["demos"] == []

@@ -5,6 +5,7 @@ all from a web page.
 
 ```
 web.py           web server: control page, live camera, jobs (python web.py)
+demo.py          demo recipes (mir / pick / place / door / home / wait), checked then run step by step
 mir.py           MiR100 REST API: status, missions (stations), pause/continue
 oven.py          oven door open/close through the oven's ESP32 (HTTP, same firmware/API as MVP2), waits for the door
 web/index.html   the control page
@@ -42,6 +43,18 @@ on the same network. When a step needs you, the page shows what to do: move the 
 6. MiR: run a mission (station, made in the MiR web interface) with Go - the arm goes home first.
    Check a target: is the MiR parked within the window (`PARK_TOL`, `PARK_YAW`)? If not, it says how far off.
 7. Pick / Place
+
+## Demos
+The **Demos** menu shows a clean view for presenting: pick a demo, Run, and watch the steps tick off with the system
+state, a small camera and the latest log beside them. Demos are typed recipes, one command per line, saved per device
+in `~/glaslab-data/demos.json`:
+```
+mir go to oven1      # a MiR mission (the arm goes home first)
+pick oven1           # a taught target
+mir go to table
+place spot
+```
+Also `door open|close <oven>`, `home`, `wait <seconds>`. The whole recipe is checked before anything moves.
 
 ## Run on boot
 ```bash

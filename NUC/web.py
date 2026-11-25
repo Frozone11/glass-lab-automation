@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 import config
+import demo
 from mir import MiR
 from oven import Oven
 from ur5.arm import UR5, load, save
@@ -32,6 +33,8 @@ NAME = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
 class Jobs:
     def __init__(self):
         self.name, self.msg, self.waiting, self.ur, self.stop_requested = None, "", False, None, False
+        self.demo, self.step = None, None  # running demo name + index of its current step (for the page)
+        self.result = ""                   # "", "running", "finished" or "failed: ..." for the last job
         self.log = deque(maxlen=200)
         self._answers = queue.Queue()
 
@@ -42,6 +45,7 @@ class Jobs:
         if self.name:
             raise ValueError(f"'{self.name}' is still running - finish or stop it first")
         self.name, self.msg, self.stop_requested = name, "", False
+        self.demo, self.step, self.result = None, None, "running"
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
 
     def _run(self, job):
@@ -49,8 +53,10 @@ class Jobs:
         try:
             job(self)
             self.say(f"== {self.name} finished")
+            self.result = "finished"
         except Exception as e:
             self.say(f"== {self.name} FAILED: {e}")
+            self.result = f"failed: {e}"
         finally:
             self.name, self.msg, self.waiting = None, "", False
 
@@ -140,7 +146,7 @@ def drive(ur, mission, jobs):
 def make_job(cam, action, d, jobs):
     """-> (job name, job) for a POST /api/<action>, or ValueError for bad input."""
     name = str(d.get("name", ""))
-    if action in ("save_pose", "teach", "pick", "place", "check") and not NAME.match(name):
+    if action in ("save_pose", "teach", "pick", "place", "check", "demo_run") and not NAME.match(name):
         raise ValueError("name: 1-30 letters, digits, - or _")
     if action in ("pick", "place", "check") and name not in load("targets"):
         raise ValueError(f"no target '{name}' - teach it first")
@@ -171,6 +177,16 @@ def make_job(cam, action, d, jobs):
                 lambda j: Oven(oven).open(j.say) if opening else Oven(oven).close(j.say))
     if action in ("pick", "place"):
         return f"{action} {name}", robot_job(cam, lambda ur: pick_or_place(ur, action, name))
+    if action == "demo_run":
+        demos = load("demos")
+        if name not in demos:
+            raise ValueError(f"no demo '{name}'")
+        steps = demo.parse(demos[name], MIR_STATE["missions"])
+
+        def job(j):
+            j.demo = name
+            robot_job(cam, lambda ur: demo.run(ur, steps, j, MiR(), Oven))(j)
+        return f"demo {name}", job
     if action == "update":
         return "update", update
     if action == "search":
@@ -195,8 +211,8 @@ def make_job(cam, action, d, jobs):
 def delete(jobs, d):
     """Remove a taught target or a saved pose (instant, not a job)."""
     kind, name = d.get("kind"), str(d.get("name", ""))
-    if kind not in ("targets", "poses"):
-        raise ValueError("kind must be targets or poses")
+    if kind not in ("targets", "poses", "demos"):
+        raise ValueError("kind must be targets, poses or demos")
     if jobs.name:
         raise ValueError(f"'{jobs.name}' is still running - finish or stop it first")
     items = load(kind)
@@ -205,6 +221,17 @@ def delete(jobs, d):
     del items[name]
     save(kind, items)
     jobs.say(f"deleted {kind[:-1]} '{name}'")
+
+
+def save_demo(d):
+    """Store a demo recipe after checking it (instant, not a job)."""
+    name, text = str(d.get("name", "")).strip(), str(d.get("recipe", ""))
+    if not NAME.match(name):
+        raise ValueError("demo name: 1-30 letters, digits, - or _")
+    demo.parse(text, MIR_STATE["missions"])
+    demos = load("demos")
+    demos[name] = text
+    save("demos", demos)
 
 
 def overlay(img, show_board):
@@ -229,6 +256,8 @@ def status(cam, jobs):
         "targets": [{"name": k, "tag": UR5.tag(v), "oven": v.get("oven")} for k, v in sorted(load("targets").items())],
         "ovens": [{"name": k, "door": v} for k, v in sorted(OVEN_STATE.items())],
         "mir": MIR_STATE,
+        "demos": [{"name": k, "recipe": v} for k, v in sorted(load("demos").items())],
+        "demo": jobs.demo, "step": jobs.step, "result": jobs.result,
     }
 
 
@@ -313,6 +342,8 @@ def make_server(cam, jobs, port=config.WEB_PORT):
                     jobs.stop()
                 elif action == "delete":
                     delete(jobs, d)
+                elif action == "demo_save":
+                    save_demo(d)
                 elif action in ("mir_pause", "mir_resume"):  # instant, also while a job runs
                     try:
                         MiR().pause() if action == "mir_pause" else MiR().resume()

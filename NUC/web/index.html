@@ -36,13 +36,28 @@
   td { padding:6px 4px; border-top:1px solid var(--line); }
   td:last-child { text-align:right; white-space:nowrap; }
   .mute { color:var(--mute); font-size:13px; }
-  #log { font:12.5px/1.45 ui-monospace, monospace; background:#15181d; color:#d7dce2; border-radius:8px;
+  nav { display:flex; gap:4px; margin-right:8px; }
+  nav button { border:0; background:none; padding:6px 12px; border-radius:7px; color:var(--mute); font-weight:600; }
+  nav button.on { background:#eef0f3; color:var(--ink); }
+  [hidden] { display:none !important; }
+  textarea { font:13.5px/1.5 ui-monospace, monospace; width:100%; padding:8px; border:1px solid var(--line); border-radius:7px; resize:vertical; }
+  .steps { list-style:none; padding:0; margin:8px 0 0; font-size:16px; }
+  .steps li { padding:8px 10px; border-radius:7px; display:flex; gap:10px; }
+  .steps li .mark { width:1.2em; text-align:center; color:var(--mute); }
+  .steps li.done { color:var(--mute); } .steps li.done .mark { color:var(--ok); }
+  .steps li.now { background:#e6eefe; font-weight:600; } .steps li.now .mark { color:var(--act); }
+  .steps li.fail { background:#fde8e8; color:var(--bad); } .steps li.fail .mark { color:var(--bad); }
+  #d-cam { width:100%; border-radius:8px; background:#111; display:block; aspect-ratio:16/9; object-fit:contain; }
+  #d-state td:first-child { color:var(--mute); width:30%; }
+  #d-log { height:150px; }
+  #log, #d-log { font:12.5px/1.45 ui-monospace, monospace; background:#15181d; color:#d7dce2; border-radius:8px;
          padding:10px; height:260px; overflow:auto; white-space:pre-wrap; margin:0; }
 </style>
 </head>
 <body>
 <header>
   <h1>GlasLab control</h1>
+  <nav><button id="nav-demo" onclick="show('demo')">Demos</button><button id="nav-debug" onclick="show('debug')">Debug panel</button></nav>
   <span class="chip" id="c-cam">camera</span>
   <span class="chip" id="c-int">camera calibration</span>
   <span class="chip" id="c-he">hand-eye</span>
@@ -52,9 +67,45 @@
   <button id="stop" onclick="post('stop')">STOP</button>
 </header>
 
-<main>
+<main id="view-demo" hidden>
   <section>
-    <div class="card"><img id="cam" src="/stream" alt="wrist camera"><div class="mute" id="tags" style="margin-top:6px"></div></div>
+    <div class="card">
+      <div class="row">
+        <select id="d-pick" onchange="loadDemo(this.value)"></select>
+        <button class="primary act" id="d-run" onclick="post('demo_run',{name:$('d-pick').value})">&#9654; Run demo</button>
+        <span id="d-result" class="mute"></span>
+      </div>
+      <ol class="steps" id="d-steps"></ol>
+    </div>
+    <div class="card idle" id="d-prompt">
+      <div id="d-msg"></div>
+      <div class="row">
+        <button class="primary" id="d-next" onclick="post('answer',{key:'next'})">Continue</button>
+        <button id="d-done" onclick="post('answer',{key:'done'})">Done</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Edit demos</h2>
+      <div class="row">
+        <input id="d-name" placeholder="demo name">
+        <button class="act" onclick="post('demo_save',{name:val('d-name'),recipe:$('d-text').value}).then(ok => ok && (want = val('d-name')))">Save</button>
+        <button class="act" onclick="loadDemo('')">New</button>
+        <button class="act" onclick="val('d-name') && del('demos', val('d-name'))">Delete</button>
+      </div>
+      <textarea id="d-text" rows="9" placeholder="mir go to oven1&#10;pick oven1&#10;mir go to table&#10;place spot"></textarea>
+      <div class="mute" id="d-help"></div>
+    </div>
+  </section>
+  <section>
+    <div class="card"><h2>System</h2><table id="d-state"></table></div>
+    <div class="card"><img id="d-cam" alt="wrist camera"></div>
+    <div class="card"><h2>Recent</h2><pre id="d-log"></pre></div>
+  </section>
+</main>
+
+<main id="view-debug">
+  <section>
+    <div class="card"><img id="cam" alt="wrist camera"><div class="mute" id="tags" style="margin-top:6px"></div></div>
     <div class="card idle" id="prompt">
       <div id="msg"></div>
       <div class="row">
@@ -139,10 +190,72 @@ async function post(action, data = {}) {
   const r = await fetch('/api/' + action, {method: 'POST', body: JSON.stringify(data)});
   if (!r.ok) alert((await r.json()).error);
   refresh();
+  return r.ok;
+}
+
+// ---- views: one camera stream at a time, the last view is remembered ----
+function show(view) {
+  for (const v of ['demo', 'debug']) {
+    $('view-' + v).hidden = v !== view;
+    $('nav-' + v).className = v === view ? 'on' : '';
+  }
+  $('cam').src = view === 'debug' ? '/stream' : '';
+  $('d-cam').src = view === 'demo' ? '/stream' : '';
+  try { localStorage.setItem('view', view); } catch {}
+}
+
+// ---- demos ----
+let want = null, demos = [];
+function loadDemo(name) {
+  const d = demos.find(x => x.name === name);
+  $('d-name').value = d ? d.name : '';
+  $('d-text').value = d ? d.recipe : '';
+  $('d-pick').value = name;
+}
+const stepLines = text => text.split('\n').map(l => l.split('#')[0].trim()).filter(Boolean);
+
+function renderDemo(s) {
+  demos = s.demos;
+  const pick = $('d-pick'), names = demos.map(d => d.name).join('\n');
+  if (pick.dataset.names !== names) {
+    const keep = want || pick.value;
+    pick.dataset.names = names;
+    pick.innerHTML = demos.length ? demos.map(d => `<option>${esc(d.name)}</option>`).join('') : '<option value="">no demos yet</option>';
+    if (demos.some(d => d.name === keep)) pick.value = keep;
+    if (want || !$('d-text').value) loadDemo(pick.value);
+    want = null;
+  }
+  const shown = s.demo && demos.find(d => d.name === s.demo) || demos.find(d => d.name === pick.value);
+  const lines = shown ? stepLines(shown.recipe) : [];
+  const mine = shown && s.demo === shown.name, failed = mine && s.result.startsWith('failed');
+  $('d-steps').innerHTML = lines.map((l, i) => {
+    let cls = '', mark = (i + 1) + '';
+    if (mine && s.step != null) {
+      if (i < s.step || s.result === 'finished') { cls = 'done'; mark = '&#10003;'; }
+      else if (i === s.step) { cls = failed ? 'fail' : 'now'; mark = failed ? '&#10007;' : '&#9654;'; }
+    }
+    return `<li class="${cls}"><span class="mark">${mark}</span><span>${esc(l)}</span></li>`;
+  }).join('') || '<li class="mute">Pick a demo, or write one below.</li>';
+  $('d-result').textContent = !mine ? '' : s.job ? 'running…' : s.result === 'finished' ? 'finished' : failed ? s.result : '';
+  $('d-run').disabled = !!s.job || !demos.length;
+  $('d-prompt').className = 'card' + (s.waiting ? '' : ' idle');
+  $('d-prompt').hidden = !s.waiting;
+  $('d-msg').textContent = s.msg;
+  const m = s.mir;
+  const rows = [['MiR', `${esc(m.state)}${m.battery != null ? ' · ' + Math.round(m.battery) + '%' : ''}${m.mission ? ' · ' + esc(m.mission) : ''}`],
+                ...s.ovens.map(o => [esc(o.name), 'door ' + esc(o.door)]),
+                ['Arm', s.job ? esc(s.job) : 'idle'],
+                ['Camera', s.camera ? 'tags in view: ' + (s.tags_seen.join(', ') || 'none') : 'no camera']];
+  $('d-state').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  const log = s.log.slice(-8).join('\n');
+  if ($('d-log').textContent !== log) { $('d-log').textContent = log; $('d-log').scrollTop = 1e9; }
+  $('d-help').innerHTML = 'One per line: <b>mir</b> &lt;mission&gt; · <b>pick</b> / <b>place</b> &lt;target&gt; · <b>door open</b> / <b>close</b> &lt;oven&gt; · <b>home</b> · <b>wait</b> &lt;seconds&gt; · # comment<br>'
+    + 'Targets: ' + (s.targets.map(t => esc(t.name)).join(', ') || 'none') + ' · Missions: ' + (m.missions.map(esc).join(', ') || 'MiR not reachable')
+    + ' · Ovens: ' + (s.ovens.map(o => esc(o.name)).join(', ') || 'none');
 }
 
 function del(kind, name) {
-  if (confirm(`Delete ${kind === 'targets' ? 'target' : 'pose'} "${name}"?`)) post('delete', {kind, name});
+  if (confirm(`Delete ${kind.slice(0, -1)} "${name}"?`)) post('delete', {kind, name}).then(ok => ok && kind === 'demos' && loadDemo(''));
 }
 
 function chip(id, text, cls) { $(id).textContent = text; $(id).className = 'chip ' + cls; }
@@ -199,7 +312,11 @@ async function refresh() {
 
   const log = s.log.join('\n');
   if (log !== lastLog) { lastLog = log; $('log').textContent = log; $('log').scrollTop = 1e9; }
+  renderDemo(s);
 }
+let start = 'debug';
+try { start = localStorage.getItem('view') || 'debug'; } catch {}
+show(start);
 setInterval(refresh, 500);
 refresh();
 </script>
