@@ -6,7 +6,7 @@ CAM = 0                         # cv2.VideoCapture index of the wrist camera (v4
 CAM_RES = (1280, 720)           # recalibrate (intrinsics) if you change this
 
 TAG_DICT = "DICT_4X4_50"        # ArUco 4x4: big cells, so it still reads well when printed small
-TAG_SIZE = 0.040                # edge of the BLACK square, metres - measure the print
+TAG_SIZE = 0.0798               # edge of the BLACK square, metres - measure the print
 BOARD, SQUARE = (9, 6), 0.025   # chessboard inner corners, square size in metres
 
 GRIP_OPEN_DO, GRIP_CLOSE_DO = 0, 1   # control box digital outputs wired to the Schunk EGP
